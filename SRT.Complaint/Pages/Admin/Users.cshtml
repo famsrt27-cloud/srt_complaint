@@ -15,17 +15,17 @@
             <div>
                 <label class="block text-xs font-medium text-gray-600 mb-1">ชื่อ-นามสกุล</label>
                 <input name="EditFullName" value="@Model.EditTarget.FullName" required
-                       class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-srt-navy" />
+                       class="form-input-compact" />
             </div>
             <div>
                 <label class="block text-xs font-medium text-gray-600 mb-1">Email</label>
                 <input name="EditEmail" type="email" value="@Model.EditTarget.Email"
-                       class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-srt-navy" />
+                       class="form-input-compact" />
             </div>
             <div>
                 <label class="block text-xs font-medium text-gray-600 mb-1">บทบาท</label>
                 <select name="EditRole" required
-                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-srt-navy">
+                        class="form-input-compact">
                     <option value="GeneralOfficer"    selected="@(Model.EditTarget.Role == "GeneralOfficer")">เจ้าหน้าที่ทั่วไป</option>
                     <option value="CorruptionOfficer" selected="@(Model.EditTarget.Role == "CorruptionOfficer")">เจ้าหน้าที่ทุจริต</option>
                     <option value="SuperAdmin"        selected="@(Model.EditTarget.Role == "SuperAdmin")">ผู้ดูแลระบบ</option>
@@ -59,12 +59,12 @@
         <div class="flex-1 min-w-[180px]">
             <label class="block text-xs font-medium text-gray-600 mb-1">ค้นหา</label>
             <input name="search" value="@Model.Search" placeholder="ชื่อ หรือ รหัสพนักงาน"
-                   class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-srt-navy" />
+                   class="form-input-compact" />
         </div>
         <div>
             <label class="block text-xs font-medium text-gray-600 mb-1">บทบาท</label>
             <select name="roleFilter"
-                    class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-srt-navy">
+                    class="form-select-compact">
                 <option value="">ทุกบทบาท</option>
                 <option value="GeneralOfficer"    selected="@(Model.RoleFilter == "GeneralOfficer")">เจ้าหน้าที่ทั่วไป</option>
                 <option value="CorruptionOfficer" selected="@(Model.RoleFilter == "CorruptionOfficer")">เจ้าหน้าที่ทุจริต</option>
@@ -293,6 +293,32 @@
         document.getElementById('tempPwModal').addEventListener('click', function(e) {
             if (e.target === this) e.stopPropagation();
         });
+
+        // Focus management: move focus into the dialog on open, and trap Tab within it
+        (function () {
+            const modal = document.getElementById('tempPwModal');
+            const focusable = modal.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+
+            first.focus();
+
+            modal.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape') {
+                    closeTempPwModal();
+                    return;
+                }
+                if (e.key !== 'Tab') return;
+
+                if (e.shiftKey && document.activeElement === first) {
+                    e.preventDefault();
+                    last.focus();
+                } else if (!e.shiftKey && document.activeElement === last) {
+                    e.preventDefault();
+                    first.focus();
+                }
+            });
+        })();
     </script>
 }
 
@@ -305,23 +331,23 @@
         <div>
             <label class="block text-xs font-medium text-gray-600 mb-1">รหัสพนักงาน (7 หลัก) <span class="text-red-500">*</span></label>
             <input name="NewEmployeeCode" required maxlength="7" pattern="[0-9]{7}" placeholder="0000000"
-                   class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-srt-navy" />
+                   class="form-input-compact font-mono" />
         </div>
         <div>
             <label class="block text-xs font-medium text-gray-600 mb-1">ชื่อ-นามสกุล <span class="text-red-500">*</span></label>
             <input name="NewFullName" required placeholder="ชื่อ นามสกุล"
-                   class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-srt-navy" />
+                   class="form-input-compact" />
         </div>
         <div>
             <label class="block text-xs font-medium text-gray-600 mb-1">Email</label>
             <input name="NewEmail" type="email" placeholder="email@railway.co.th"
-                   class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-srt-navy" />
+                   class="form-input-compact" />
         </div>
         <div>
             <label class="block text-xs font-medium text-gray-600 mb-1">บทบาท <span class="text-red-500">*</span></label>
             <div class="flex gap-2">
                 <select name="NewRole" required
-                        class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-srt-navy">
+                        class="flex-1 form-select-compact">
                     <option value="">เลือกบทบาท</option>
                     <option value="GeneralOfficer">เจ้าหน้าที่ทั่วไป</option>
                     <option value="CorruptionOfficer">เจ้าหน้าที่ทุจริต</option>

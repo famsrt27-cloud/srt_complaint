@@ -17,7 +17,7 @@ namespace SRT.Complaint.Data.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "9.0.16")
+                .HasAnnotation("ProductVersion", "9.0.18")
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
@@ -248,6 +248,12 @@ namespace SRT.Complaint.Data.Migrations
                     b.Property<DateOnly?>("IncidentDate")
                         .HasColumnType("date");
 
+                    b.Property<double?>("Latitude")
+                        .HasColumnType("float");
+
+                    b.Property<double?>("Longitude")
+                        .HasColumnType("float");
+
                     b.Property<string>("Priority")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -333,6 +339,9 @@ namespace SRT.Complaint.Data.Migrations
                     b.Property<int>("ComplaintId")
                         .HasColumnType("int");
 
+                    b.Property<int?>("ComplaintNoteId")
+                        .HasColumnType("int");
+
                     b.Property<string>("FileName")
                         .IsRequired()
                         .HasMaxLength(500)
@@ -356,6 +365,8 @@ namespace SRT.Complaint.Data.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("ComplaintId");
+
+                    b.HasIndex("ComplaintNoteId");
 
                     b.ToTable("ComplaintAttachments", "dbo");
                 });
@@ -952,6 +963,9 @@ namespace SRT.Complaint.Data.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("BodyJson")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("ImagePath")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
@@ -1024,7 +1038,7 @@ namespace SRT.Complaint.Data.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
-                    b.Property<int>("TriggeredById")
+                    b.Property<int?>("TriggeredById")
                         .HasColumnType("int");
 
                     b.HasKey("Id");
@@ -1307,6 +1321,46 @@ namespace SRT.Complaint.Data.Migrations
                     b.ToTable("StaffUsers", "dbo");
                 });
 
+            modelBuilder.Entity("SRT.Complaint.Models.TraffySettings", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("ApiUrl")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("OrgId")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<byte[]>("PasswordEncrypted")
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedById")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Username")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<byte[]>("WebhookSecretEncrypted")
+                        .HasColumnType("varbinary(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UpdatedById");
+
+                    b.ToTable("TraffySettings", "dbo");
+                });
+
             modelBuilder.Entity("SRT.Complaint.Models.Webhook", b =>
                 {
                     b.Property<int>("Id")
@@ -1486,7 +1540,13 @@ namespace SRT.Complaint.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("SRT.Complaint.Models.ComplaintNote", "Note")
+                        .WithMany("Attachments")
+                        .HasForeignKey("ComplaintNoteId");
+
                     b.Navigation("Complaint");
+
+                    b.Navigation("Note");
                 });
 
             modelBuilder.Entity("SRT.Complaint.Models.ComplaintNote", b =>
@@ -1566,9 +1626,7 @@ namespace SRT.Complaint.Data.Migrations
                 {
                     b.HasOne("SRT.Complaint.Models.StaffUser", "TriggeredBy")
                         .WithMany()
-                        .HasForeignKey("TriggeredById")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .HasForeignKey("TriggeredById");
 
                     b.Navigation("TriggeredBy");
                 });
@@ -1579,6 +1637,15 @@ namespace SRT.Complaint.Data.Migrations
                         .WithMany()
                         .HasForeignKey("UpdatedById")
                         .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("UpdatedBy");
+                });
+
+            modelBuilder.Entity("SRT.Complaint.Models.TraffySettings", b =>
+                {
+                    b.HasOne("SRT.Complaint.Models.StaffUser", "UpdatedBy")
+                        .WithMany()
+                        .HasForeignKey("UpdatedById");
 
                     b.Navigation("UpdatedBy");
                 });
@@ -1628,6 +1695,11 @@ namespace SRT.Complaint.Data.Migrations
                     b.Navigation("Complaints");
 
                     b.Navigation("SubCategories");
+                });
+
+            modelBuilder.Entity("SRT.Complaint.Models.ComplaintNote", b =>
+                {
+                    b.Navigation("Attachments");
                 });
 
             modelBuilder.Entity("SRT.Complaint.Models.ComplaintSubCategory", b =>

@@ -10,7 +10,7 @@ using SRT.Complaint.Validation;
 
 namespace SRT.Complaint.Pages.Staff;
 
-[Authorize]
+[Authorize(Policy = "StaffOnly")]
 public class ChangePasswordModel(AppDbContext db) : PageModel
 {
     public bool IsForced => User.HasClaim("MustChangePassword", "true");

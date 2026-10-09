@@ -3,13 +3,16 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.RateLimiting;
 using SRT.Complaint.Models;
+using SRT.Complaint.Models.Corruption;
 using SRT.Complaint.Services;
+using SRT.Complaint.Validation;
 
 namespace SRT.Complaint.Pages.Public;
 
 public class TrackModel(
     IComplaintService complaintService,
-    ICorruptionService corruptionService) : PageModel
+    ICorruptionService corruptionService,
+    IConfiguration config) : PageModel
 {
     [BindProperty(SupportsGet = true)]
     public string? Ref { get; set; }
@@ -96,6 +99,31 @@ public class TrackModel(
         return RedirectToPage(new { Ref = refUpper });
     }
 
+    /// <summary>Serves a resolution attachment on a "PublicReply" note to the reporter — gated
+    /// behind the same phone-verification session used to view the tracking details in the
+    /// first place, and scoped so it can only ever return a file from a public-reply note on
+    /// this exact reference number (never internal notes, never other complaints).</summary>
+    public async Task<IActionResult> OnGetAttachmentAsync(string reference, int attachmentId)
+    {
+        var refUpper = (reference ?? "").Trim().ToUpper();
+        var verified = HttpContext.Session.GetString($"track_v_{refUpper}") == "1";
+        if (!verified) return Forbid();
+
+        var complaint = await complaintService.GetByReferenceAsync(refUpper);
+        var attachment = complaint?.Notes
+            .Where(n => n.NoteType == "PublicReply")
+            .SelectMany(n => n.Attachments)
+            .FirstOrDefault(a => a.Id == attachmentId);
+        if (attachment == null) return NotFound();
+
+        var storagePath = config["FileUpload:StoragePath"] ?? Path.GetTempPath();
+        var fullPath = FileStorage.ResolveWithinRoot(storagePath, attachment.StoredPath);
+        if (fullPath is null) return NotFound();
+        if (!System.IO.File.Exists(fullPath)) return NotFound();
+
+        return PhysicalFile(fullPath, attachment.MimeType ?? "application/octet-stream", attachment.FileName);
+    }
+
     public async Task<IActionResult> OnPostSatisfactionAsync()
     {
         if (string.IsNullOrWhiteSpace(Ref) || SatisfactionScore < 1 || SatisfactionScore > 5)
@@ -132,7 +160,7 @@ public class TrackModel(
             }
             else if (note.NoteType == "PublicReply")
             {
-                events.Add(new(note.CreatedAt, "reply", "ข้อความจากเจ้าหน้าที่", note.Content));
+                events.Add(new(note.CreatedAt, "reply", "ข้อความจากเจ้าหน้าที่", note.Content, note.Attachments.ToList()));
             }
         }
 
@@ -145,7 +173,8 @@ public class TrackModel(
         return events.OrderBy(e => e.At).ToList();
     }
 
-    public record TimelineEvent(DateTime At, string Type, string Label, string? Detail);
+    public record TimelineEvent(DateTime At, string Type, string Label, string? Detail,
+        IReadOnlyList<ComplaintAttachment>? Attachments = null);
 
     public static string StatusLabel(string s) => s switch
     {

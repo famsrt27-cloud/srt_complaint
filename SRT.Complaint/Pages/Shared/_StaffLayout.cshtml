@@ -1,4 +1,6 @@
 @using System.Security.Claims
+@inject SRT.Complaint.Services.IComplaintService ComplaintServiceForBell
+@inject SRT.Complaint.Services.ICorruptionService CorruptionServiceForBell
 @{
     var userRole = User.FindFirstValue(ClaimTypes.Role) ?? "";
     var userName = User.FindFirstValue("FullName") ?? User.Identity?.Name ?? "เจ้าหน้าที่";
@@ -12,6 +14,9 @@
                                            .Take(2)
                                            .Select(w => w[0].ToString()));
     if (initials.Length == 0) initials = "รฟ";
+
+    var notificationBell = await SRT.Complaint.Pages.Staff.NotificationBadgeModel.BuildAsync(
+        User, ComplaintServiceForBell, CorruptionServiceForBell);
 }
 <!DOCTYPE html>
 <html lang="th">
@@ -86,7 +91,14 @@
 
             @if (userRole is "GeneralOfficer" or "SuperAdmin")
             {
-                <p class="section-title">เรื่องทั่วไป</p>
+                <div class="sidebar-section" data-section-id="general">
+                <button type="button" class="section-title-btn" onclick="toggleSidebarSection('general')" aria-expanded="true" aria-controls="section-general">
+                    <span>เรื่องทั่วไป</span>
+                    <svg class="section-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                    </svg>
+                </button>
+                <div id="section-general" class="sidebar-section-body"><div>
                 <a asp-page="/Staff/Dashboard"
                    class="sidebar-link @(IsActive("/Staff/Dashboard") ? "sidebar-link-active" : "")">
                     <svg class="w-4 h-4 shrink-0 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -119,11 +131,20 @@
                     </svg>
                     Workload ทีม
                 </a>
+                </div></div>
+                </div>
             }
 
             @if (userRole is "CorruptionOfficer" or "SuperAdmin")
             {
-                <p class="section-title">เรื่องทุจริต</p>
+                <div class="sidebar-section" data-section-id="corruption">
+                <button type="button" class="section-title-btn" onclick="toggleSidebarSection('corruption')" aria-expanded="true" aria-controls="section-corruption">
+                    <span>เรื่องทุจริต</span>
+                    <svg class="section-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                    </svg>
+                </button>
+                <div id="section-corruption" class="sidebar-section-body"><div>
                 <a asp-page="/Corruption/Dashboard"
                    class="sidebar-link @(IsActive("/Corruption/Dashboard") ? "sidebar-link-active" : "")">
                     <svg class="w-4 h-4 shrink-0 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -140,11 +161,20 @@
                     </svg>
                     คิวเรื่องทุจริต
                 </a>
+                </div></div>
+                </div>
             }
 
             @if (userRole == "SuperAdmin")
             {
-                <p class="section-title">ผู้ดูแลระบบ</p>
+                <div class="sidebar-section" data-section-id="admin">
+                <button type="button" class="section-title-btn" onclick="toggleSidebarSection('admin')" aria-expanded="true" aria-controls="section-admin">
+                    <span>ผู้ดูแลระบบ</span>
+                    <svg class="section-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                    </svg>
+                </button>
+                <div id="section-admin" class="sidebar-section-body"><div>
 
                 <!-- ── ภาพรวม ── -->
                 <p class="section-subtitle">ภาพรวม</p>
@@ -201,6 +231,14 @@
                     </svg>
                     การแจ้งเตือน
                 </a>
+                <a asp-page="/Admin/ExternalSync"
+                   class="sidebar-link @(IsActive("/Admin/ExternalSync") ? "sidebar-link-active" : "")">
+                    <svg class="w-4 h-4 shrink-0 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    ดึงคำร้องจากระบบภายนอก
+                </a>
 
                 <!-- ── เนื้อหา ── -->
                 <p class="section-subtitle">เนื้อหา</p>
@@ -247,6 +285,8 @@
                     </svg>
                     Audit Log
                 </a>
+                </div></div>
+                </div>
             }
         </nav>
 
@@ -301,6 +341,7 @@
                       class="hidden sm:block text-xs text-gray-400 font-medium">
                     @DateTime.Now.ToString("d MMMM yyyy", new System.Globalization.CultureInfo("th-TH"))
                 </time>
+                @await Html.PartialAsync("_NotificationBell", notificationBell)
                 <div class="w-8 h-8 rounded-xl bg-srt-navy-50 flex items-center justify-center">
                     <span class="text-srt-navy font-bold text-xs">@initials</span>
                 </div>
@@ -359,6 +400,32 @@
             sidebar.classList.toggle('-translate-x-full');
             overlay.classList.toggle('hidden');
         }
+
+        function toggleSidebarSection(id) {
+            const body = document.getElementById('section-' + id);
+            const btn  = document.querySelector(`.sidebar-section[data-section-id="${id}"] .section-title-btn`);
+            const collapsed = body.classList.toggle('collapsed');
+            if (btn) btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+            localStorage.setItem('sidebar-collapsed-' + id, collapsed ? '1' : '0');
+        }
+
+        // Restore collapsed state on load — but always force-expand a section that contains
+        // the current page, so navigating never hides where you are.
+        document.querySelectorAll('.sidebar-section').forEach(section => {
+            const id = section.dataset.sectionId;
+            const body = document.getElementById('section-' + id);
+            const btn = section.querySelector('.section-title-btn');
+            if (!body) return;
+
+            const hasActivePage = body.querySelector('.sidebar-link-active') !== null;
+            const storedCollapsed = localStorage.getItem('sidebar-collapsed-' + id) === '1';
+            const collapsed = !hasActivePage && storedCollapsed;
+
+            if (collapsed) {
+                body.classList.add('collapsed');
+                if (btn) btn.setAttribute('aria-expanded', 'false');
+            }
+        });
     </script>
 
     @await RenderSectionAsync("Scripts", required: false)

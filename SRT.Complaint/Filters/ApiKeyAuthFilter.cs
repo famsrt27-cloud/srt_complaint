@@ -1,14 +1,20 @@
 #nullable enable
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Net;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.Extensions.Caching.Memory;
+using SRT.Complaint.Models;
 using SRT.Complaint.Services;
 
 namespace SRT.Complaint.Filters;
 
-public class ApiKeyAuthFilter(IApiKeyService apiKeyService, IMemoryCache cache) : IAsyncActionFilter
+public class ApiKeyAuthFilter(
+    IApiKeyService apiKeyService,
+    IApiRequestLogService logService,
+    IMemoryCache cache,
+    ILogger<ApiKeyAuthFilter> logger) : IAsyncActionFilter
 {
     private static readonly ConcurrentDictionary<string, SemaphoreSlim> _semaphores = new();
 
@@ -37,6 +43,7 @@ public class ApiKeyAuthFilter(IApiKeyService apiKeyService, IMemoryCache cache) 
             if (!allowed.Any(ip => MatchesIp(clientIp, ip)))
             {
                 context.Result = new ObjectResult(new { error = "IP address not in whitelist" }) { StatusCode = 403 };
+                await LogRequestAsync(context, apiKey, 403, 0);
                 return;
             }
         }
@@ -55,6 +62,7 @@ public class ApiKeyAuthFilter(IApiKeyService apiKeyService, IMemoryCache cache) 
             if (count >= apiKey.RateLimitPerMin)
             {
                 context.Result = new ObjectResult(new { error = "Rate limit exceeded", retryAfter = "60s" }) { StatusCode = 429 };
+                await LogRequestAsync(context, apiKey, 429, 0);
                 return;
             }
             cache.Set(cacheKey, count + 1, TimeSpan.FromMinutes(2));
@@ -65,7 +73,35 @@ public class ApiKeyAuthFilter(IApiKeyService apiKeyService, IMemoryCache cache) 
         }
 
         context.HttpContext.Items["ApiKey"] = apiKey;
-        await next();
+
+        var sw = Stopwatch.StartNew();
+        var executed = await next();
+        sw.Stop();
+
+        var statusCode = ResolveStatusCode(executed.Result, executed.Exception != null ? 500 : 200);
+        await LogRequestAsync(context, apiKey, statusCode, (int)sw.ElapsedMilliseconds);
+    }
+
+    private static int ResolveStatusCode(IActionResult? result, int fallback) => result switch
+    {
+        ObjectResult objectResult         => objectResult.StatusCode ?? fallback,
+        StatusCodeResult statusCodeResult => statusCodeResult.StatusCode,
+        _                                 => fallback
+    };
+
+    private async Task LogRequestAsync(ActionExecutingContext context, ApiKey apiKey, int statusCode, int durationMs)
+    {
+        try
+        {
+            var request = context.HttpContext.Request;
+            await logService.LogAsync(apiKey.Id, request.Method, request.Path.Value ?? "",
+                request.QueryString.HasValue ? request.QueryString.Value : null,
+                context.HttpContext.Connection.RemoteIpAddress?.ToString(), statusCode, durationMs);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to log API request");
+        }
     }
 
     private static bool MatchesIp(string clientIp, string allowedEntry)

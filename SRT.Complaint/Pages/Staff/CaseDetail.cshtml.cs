@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using SRT.Complaint.Data;
 using SRT.Complaint.Models;
 using SRT.Complaint.Services;
+using SRT.Complaint.Validation;
 
 namespace SRT.Complaint.Pages.Staff;
 
@@ -15,10 +16,16 @@ namespace SRT.Complaint.Pages.Staff;
 public class CaseDetailModel(
     IComplaintService complaintService,
     IPdfExportService pdfExportService,
-    AppDbContext db) : PageModel
+    AppDbContext db,
+    IConfiguration config) : PageModel
 {
+    private static readonly string[] AllowedNoteAttachmentExtensions = [".jpg", ".jpeg", ".png", ".pdf", ".doc", ".docx"];
+    private const long MaxNoteAttachmentSizeBytes = 10 * 1024 * 1024; // 10 MB
+    private const int MaxNoteAttachmentCount = 5;
+
     [BindProperty] public string? NoteContent { get; set; }
     [BindProperty] public string? NoteType { get; set; } = "InternalNote";
+    [BindProperty] public List<IFormFile>? NoteAttachments { get; set; }
     [BindProperty] public string? NewStatus { get; set; }
     [BindProperty] public int? TransferToId { get; set; }
     [BindProperty] public string? TransferReason { get; set; }
@@ -33,6 +40,20 @@ public class CaseDetailModel(
         Response.Headers.CacheControl = "no-store";
         ViewData["Title"] = "รายละเอียดเรื่อง";
         return await LoadComplaintAsync(id);
+    }
+
+    public async Task<IActionResult> OnGetAttachmentAsync(int id, int attachmentId)
+    {
+        var attachment = await db.ComplaintAttachments
+            .FirstOrDefaultAsync(a => a.Id == attachmentId && a.ComplaintId == id);
+        if (attachment == null) return NotFound();
+
+        var storagePath = config["FileUpload:StoragePath"] ?? Path.GetTempPath();
+        var fullPath = FileStorage.ResolveWithinRoot(storagePath, attachment.StoredPath);
+        if (fullPath is null) return NotFound();
+        if (!System.IO.File.Exists(fullPath)) return NotFound();
+
+        return PhysicalFile(fullPath, attachment.MimeType ?? "application/octet-stream", attachment.FileName);
     }
 
     public async Task<IActionResult> OnPostClaimAsync(int id)
@@ -62,7 +83,16 @@ public class CaseDetailModel(
             TempData["Error"] = "กรุณากรอกเนื้อหาบันทึก";
             return RedirectToPage(new { id });
         }
-        await complaintService.AddNoteAsync(id, GetStaffId(), NoteType ?? "InternalNote", NoteContent.Trim());
+
+        var attachments = NoteAttachments?.Where(f => f.Length > 0).ToList() ?? [];
+        var (filesValid, fileError) = await ValidateNoteAttachmentsAsync(attachments);
+        if (!filesValid)
+        {
+            TempData["Error"] = fileError;
+            return RedirectToPage(new { id });
+        }
+
+        await complaintService.AddNoteAsync(id, GetStaffId(), NoteType ?? "InternalNote", NoteContent.Trim(), attachments);
         TempData["Success"] = "บันทึกสำเร็จ";
         return RedirectToPage(new { id });
     }
@@ -163,6 +193,27 @@ public class CaseDetailModel(
         if (User.IsInRole("SuperAdmin")) return true;
         var c = await complaintService.GetByIdAsync(complaintId);
         return c?.AssignedToId == GetStaffId();
+    }
+
+    private static async Task<(bool Valid, string Error)> ValidateNoteAttachmentsAsync(IReadOnlyList<IFormFile> files)
+    {
+        if (files.Count == 0) return (true, string.Empty);
+        if (files.Count > MaxNoteAttachmentCount)
+            return (false, $"แนบไฟล์ได้ไม่เกิน {MaxNoteAttachmentCount} ไฟล์");
+
+        foreach (var file in files)
+        {
+            if (file.Length > MaxNoteAttachmentSizeBytes)
+                return (false, $"ไฟล์ \"{file.FileName}\" มีขนาดเกิน 10 MB");
+
+            var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+            if (!AllowedNoteAttachmentExtensions.Contains(ext))
+                return (false, $"ไฟล์ \"{file.FileName}\" ไม่รองรับประเภทไฟล์นี้ (รองรับ: JPG, PNG, PDF, DOC, DOCX)");
+
+            if (!await FileSignatureValidator.HasValidSignatureAsync(file, ext))
+                return (false, $"ไฟล์ \"{file.FileName}\" มีเนื้อหาไม่ตรงกับนามสกุลไฟล์");
+        }
+        return (true, string.Empty);
     }
 
     public static string StatusLabel(string s) => s switch

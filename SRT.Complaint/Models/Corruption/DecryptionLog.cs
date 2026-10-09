@@ -1,5 +1,5 @@
 #nullable enable
-namespace SRT.Complaint.Models;
+namespace SRT.Complaint.Models.Corruption;
 
 public class DecryptionLog
 {

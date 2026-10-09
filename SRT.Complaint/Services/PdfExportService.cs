@@ -3,6 +3,7 @@ using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
 using SRT.Complaint.Models;
+using SRT.Complaint.Models.Corruption;
 using Microsoft.AspNetCore.Hosting;
 
 namespace SRT.Complaint.Services;

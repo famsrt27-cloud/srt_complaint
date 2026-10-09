@@ -50,7 +50,9 @@ try
     })
     .AddJwtBearer(JwtBearerDefaults.AuthenticationScheme, options =>
     {
-        var jwtSecret = builder.Configuration["Jwt:Secret"] ?? string.Empty;
+        var jwtSecret = builder.Configuration["Jwt:Secret"];
+        if (string.IsNullOrWhiteSpace(jwtSecret))
+            throw new InvalidOperationException("Jwt:Secret is not configured");
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
@@ -71,30 +73,35 @@ try
         options.AddPolicy("SuperAdmin", policy => policy.RequireRole("SuperAdmin"));
     });
 
-    // ──────────── Rate Limiting ────────────
+    // ──────────── Rate Limiting (partitioned per client IP) ────────────
+    static string ClientIp(HttpContext ctx) => ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+
     builder.Services.AddRateLimiter(options =>
     {
-        options.AddFixedWindowLimiter("SubmitPolicy", limiter =>
-        {
-            limiter.PermitLimit = 5;
-            limiter.Window = TimeSpan.FromHours(1);
-            limiter.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
-            limiter.QueueLimit = 0;
-        });
-        options.AddFixedWindowLimiter("TrackVerifyPolicy", limiter =>
-        {
-            limiter.PermitLimit = 10;
-            limiter.Window = TimeSpan.FromMinutes(15);
-            limiter.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
-            limiter.QueueLimit = 0;
-        });
-        options.AddFixedWindowLimiter("LoginPolicy", limiter =>
-        {
-            limiter.PermitLimit = 10;
-            limiter.Window = TimeSpan.FromMinutes(15);
-            limiter.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
-            limiter.QueueLimit = 0;
-        });
+        options.AddPolicy("SubmitPolicy", httpContext =>
+            RateLimitPartition.GetFixedWindowLimiter(ClientIp(httpContext), _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 5,
+                Window = TimeSpan.FromHours(1),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0
+            }));
+        options.AddPolicy("TrackVerifyPolicy", httpContext =>
+            RateLimitPartition.GetFixedWindowLimiter(ClientIp(httpContext), _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(15),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0
+            }));
+        options.AddPolicy("LoginPolicy", httpContext =>
+            RateLimitPartition.GetFixedWindowLimiter(ClientIp(httpContext), _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(15),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0
+            }));
         options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     });
 
@@ -107,6 +114,7 @@ try
         options.Cookie.HttpOnly = true;
         options.Cookie.IsEssential = true;
         options.Cookie.SameSite = SameSiteMode.Strict;
+        options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
     });
 
     // ──────────── Services ────────────
@@ -126,13 +134,26 @@ try
     builder.Services.AddScoped<IStatsService, StatsService>();
     builder.Services.AddScoped<ICorruptionStatsService, CorruptionStatsService>();
     builder.Services.AddScoped<IExternalSyncService, ExternalSyncService>();
-    builder.Services.AddSingleton<IExternalSystemAdapter, SRT.Complaint.Services.Adapters.TraffyFonduAdapter>();
+    builder.Services.AddScoped<ITraffySettingsService, TraffySettingsService>();
+    builder.Services.AddScoped<IStaffUserService, StaffUserService>();
+    builder.Services.AddScoped<IStaffDirectoryService, StaffDirectoryService>();
+    builder.Services.AddScoped<IDiscordNotifier, DiscordNotifier>();
+    // Registered as its own singleton so IExternalSystemAdapter and IExternalStatusResolver
+    // share the same instance (and therefore the same cached token/status-list state).
+    builder.Services.AddSingleton<SRT.Complaint.Services.Adapters.TraffyFonduAdapter>();
+    builder.Services.AddSingleton<IExternalSystemAdapter>(sp =>
+        sp.GetRequiredService<SRT.Complaint.Services.Adapters.TraffyFonduAdapter>());
+    builder.Services.AddSingleton<IExternalStatusResolver>(sp =>
+        sp.GetRequiredService<SRT.Complaint.Services.Adapters.TraffyFonduAdapter>());
+    builder.Services.AddSingleton<ITraffyConnectionTester>(sp =>
+        sp.GetRequiredService<SRT.Complaint.Services.Adapters.TraffyFonduAdapter>());
     builder.Services.AddSingleton<IExternalSystemAdapter, SRT.Complaint.Services.Adapters.DamrongdhammaAdapter>();
     builder.Services.AddScoped<ApiKeyAuthFilter>();
 
     // ──────────── Background Services ────────────
     builder.Services.AddHostedService<SlaBackgroundService>();
     builder.Services.AddHostedService<WebhookRetryService>();
+    builder.Services.AddHostedService<ExternalSyncBackgroundService>();
 
     // ──────────── MVC & Razor Pages ────────────
     builder.Services.AddControllers();
@@ -189,6 +210,7 @@ try
     app.UseSerilogRequestLogging();
     app.UseHttpsRedirection();
     app.UseStaticFiles();
+
     app.UseRouting();
     app.UseRateLimiter();
     app.UseSession();

@@ -4,6 +4,11 @@
     ViewData["Title"] = "หลักเกณฑ์การรับเรื่องร้องเรียน";
 }
 
+@section Head {
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/quill-table-better@1.2.3/dist/quill-table-better.css" />
+}
+
 <!-- Page header -->
 <div class="mb-6 flex items-center justify-between">
     <div>
@@ -65,49 +70,16 @@
                 <span asp-validation-for="Input.Title" class="form-error block"></span>
             </div>
 
-            <!-- Tabs -->
+            <!-- WYSIWYG editor -->
             <div>
-                <label class="form-label mb-2 block">เนื้อหา (HTML)</label>
-                <div class="flex items-center gap-1 mb-2 bg-gray-100 rounded-lg p-1 w-fit">
-                    <button type="button" id="tab-edit"
-                            onclick="switchTab('edit')"
-                            class="px-3 py-1 text-xs font-medium rounded-md bg-white shadow-sm text-gray-900 transition">
-                        แก้ไข
-                    </button>
-                    <button type="button" id="tab-preview"
-                            onclick="switchTab('preview')"
-                            class="px-3 py-1 text-xs font-medium rounded-md text-gray-500 transition hover:text-gray-700">
-                        ตัวอย่าง
-                    </button>
-                </div>
+                <label class="form-label mb-2 block">เนื้อหาหลักเกณฑ์</label>
+                <p class="text-xs text-gray-500 mb-2">
+                    ใช้แถบเครื่องมือด้านบนกล่องข้อความเพื่อจัดรูปแบบ (ตัวหนา, หัวข้อ, สี, ลิสต์, ตาราง, เส้นคั่น ฯลฯ) — ไม่ต้องเขียนโค้ด HTML เอง
+                </p>
 
-                <!-- Editor -->
-                <div id="editor-pane">
-                    <textarea asp-for="Input.Content"
-                              rows="22"
-                              oninput="syncPreview()"
-                              class="w-full font-mono text-xs border border-gray-300 rounded-xl px-3 py-3
-                                     focus:outline-none focus:ring-2 focus:ring-srt-navy/30 focus:border-srt-navy
-                                     resize-y bg-gray-50"
-                              placeholder="ใส่ HTML content ที่ต้องการแสดงในหลักเกณฑ์..."></textarea>
-                    <span asp-validation-for="Input.Content" class="form-error block"></span>
-                    <p class="text-xs text-gray-400 mt-1.5">
-                        รองรับ HTML — ใช้ tag เช่น
-                        <code class="bg-gray-100 px-1 rounded">&lt;ul&gt;&lt;li&gt;</code>,
-                        <code class="bg-gray-100 px-1 rounded">&lt;p&gt;</code>,
-                        <code class="bg-gray-100 px-1 rounded">&lt;strong&gt;</code>,
-                        Tailwind CSS classes
-                    </p>
-                </div>
-
-                <!-- Preview -->
-                <div id="preview-pane" class="hidden">
-                    <div id="preview-content"
-                         class="min-h-[200px] border border-gray-200 rounded-xl px-5 py-4
-                                bg-white text-sm text-gray-700 leading-relaxed">
-                    </div>
-                    <p class="text-xs text-gray-400 mt-1.5">ตัวอย่างที่จะแสดงใน modal (Tailwind จะไม่ render ใน preview นี้)</p>
-                </div>
+                <div id="terms-editor" class="terms-editor"></div>
+                <textarea asp-for="Input.Content" id="Input_Content" class="hidden" aria-hidden="true"></textarea>
+                <span asp-validation-for="Input.Content" class="form-error block"></span>
             </div>
         </div>
     </div>
@@ -132,7 +104,7 @@
                 </div>
                 <span class="text-white font-bold text-sm" id="demo-title">@Model.Input.Title</span>
             </div>
-            <div class="p-5 text-sm text-gray-700 leading-relaxed max-h-48 overflow-y-auto bg-white" id="demo-content">
+            <div class="terms-content p-5 max-h-48 overflow-y-auto bg-white" id="demo-content">
                 @Html.Raw(Model.Input.Content)
             </div>
             <div class="bg-gray-50 border-t border-gray-200 px-5 py-3 flex items-center gap-3">
@@ -159,32 +131,76 @@
 
 @section Scripts {
     <partial name="_ValidationScriptsPartial" />
+    <script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/quill-table-better@1.2.3/dist/quill-table-better.js"></script>
     <script>
-        function switchTab(tab) {
-            var editBtn = document.getElementById('tab-edit');
-            var previewBtn = document.getElementById('tab-preview');
-            var editorPane = document.getElementById('editor-pane');
-            var previewPane = document.getElementById('preview-pane');
+        Quill.register({ 'modules/table-better': QuillTableBetter }, true);
 
-            if (tab === 'edit') {
-                editBtn.className = 'px-3 py-1 text-xs font-medium rounded-md bg-white shadow-sm text-gray-900 transition';
-                previewBtn.className = 'px-3 py-1 text-xs font-medium rounded-md text-gray-500 transition hover:text-gray-700';
-                editorPane.classList.remove('hidden');
-                previewPane.classList.add('hidden');
-            } else {
-                previewBtn.className = 'px-3 py-1 text-xs font-medium rounded-md bg-white shadow-sm text-gray-900 transition';
-                editBtn.className = 'px-3 py-1 text-xs font-medium rounded-md text-gray-500 transition hover:text-gray-700';
-                previewPane.classList.remove('hidden');
-                editorPane.classList.add('hidden');
-                document.getElementById('preview-content').innerHTML =
-                    document.getElementById('Input_Content').value;
+        // Custom "แทรกเส้นคั่น" (divider) block — Quill has no built-in <hr> format
+        var BlockEmbed = Quill.import('blots/block/embed');
+        class DividerBlot extends BlockEmbed {}
+        DividerBlot.blotName = 'divider';
+        DividerBlot.tagName = 'hr';
+        Quill.register(DividerBlot);
+
+        var icons = Quill.import('ui/icons');
+        icons['divider'] = '<svg viewBox="0 0 18 18"><line class="ql-stroke" x1="3" y1="9" x2="15" y2="9"></line></svg>';
+        icons['undo'] = '<svg viewBox="0 0 18 18"><path class="ql-stroke" d="M3,9 a6,6 0 1 1 1.76,4.24"></path><polyline class="ql-stroke" points="3 4.5 3 9 7.5 9"></polyline></svg>';
+        icons['redo'] = '<svg viewBox="0 0 18 18"><path class="ql-stroke" d="M15,9 a6,6 0 1 0 -1.76,4.24"></path><polyline class="ql-stroke" points="15 4.5 15 9 10.5 9"></polyline></svg>';
+
+        var termsQuill = new Quill('#terms-editor', {
+            theme: 'snow',
+            placeholder: 'พิมพ์เนื้อหาหลักเกณฑ์ที่นี่...',
+            modules: {
+                table: false,
+                'table-better': {
+                    language: 'en_US',
+                    menus: ['column', 'row', 'merge', 'table', 'cell', 'wrap', 'copy', 'delete'],
+                    toolbarTable: true
+                },
+                keyboard: {
+                    bindings: QuillTableBetter.keyboardBindings
+                },
+                toolbar: {
+                    container: [
+                        [{ header: [1, 2, 3, 4, false] }],
+                        ['bold', 'italic', 'underline', 'strike'],
+                        [{ color: [] }, { background: [] }],
+                        [{ list: 'ordered' }, { list: 'bullet' }],
+                        [{ indent: '-1' }, { indent: '+1' }],
+                        [{ align: [] }],
+                        ['blockquote', 'link'],
+                        ['divider', 'table-better'],
+                        ['undo', 'redo'],
+                        ['clean']
+                    ],
+                    handlers: {
+                        divider: function () {
+                            var range = this.quill.getSelection(true);
+                            this.quill.insertEmbed(range.index, 'divider', true, 'user');
+                            this.quill.setSelection(range.index + 1, 'silent');
+                        },
+                        undo: function () { this.quill.history.undo(); },
+                        redo: function () { this.quill.history.redo(); }
+                    }
+                }
             }
+        });
+
+        var contentField = document.getElementById('Input_Content');
+        termsQuill.clipboard.dangerouslyPasteHTML(contentField.value);
+        termsQuill.history.clear();
+
+        function syncContent() {
+            var isEmpty = termsQuill.getText().trim().length === 0
+                && termsQuill.root.querySelectorAll('table, hr, img').length === 0;
+            var html = isEmpty ? '' : termsQuill.root.innerHTML;
+            contentField.value = html;
+            document.getElementById('demo-content').innerHTML = html;
         }
 
-        function syncPreview() {
-            var val = document.getElementById('Input_Content').value;
-            document.getElementById('demo-content').innerHTML = val;
-        }
+        termsQuill.on('text-change', syncContent);
+        document.getElementById('terms-form').addEventListener('submit', syncContent);
 
         function updateStatusBadge(checked) {
             var badge = document.getElementById('status-badge');

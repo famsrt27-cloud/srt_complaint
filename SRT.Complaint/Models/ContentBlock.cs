@@ -15,6 +15,9 @@ public class ContentBlock
 
     public string BodyHtml { get; set; } = "";
 
+    /// <summary>Structured form data (JSON) backing the admin editor, so re-editing doesn't require re-parsing BodyHtml.</summary>
+    public string? BodyJson { get; set; }
+
     [MaxLength(500)]
     public string? ImagePath { get; set; }
 

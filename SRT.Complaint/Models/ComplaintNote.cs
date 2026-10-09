@@ -12,4 +12,5 @@ public class ComplaintNote
 
     public Complaint Complaint { get; set; } = null!;
     public StaffUser? Author { get; set; }
+    public ICollection<ComplaintAttachment> Attachments { get; set; } = new List<ComplaintAttachment>();
 }

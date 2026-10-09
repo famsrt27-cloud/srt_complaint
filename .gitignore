@@ -16,6 +16,7 @@ out/
 ## Local config (secrets / keys — ห้าม commit)
 appsettings.Production.json
 appsettings.*.local.json
+web.config
 
 ## OS / Editor
 .DS_Store

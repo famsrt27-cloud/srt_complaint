@@ -13,7 +13,7 @@ public class ExternalSyncLog
     public int      ErrorCount      { get; set; }
     public string   SyncStatus      { get; set; } = "Running"; // Running | Success | Failed
     public string?  ErrorMessage    { get; set; }
-    public int      TriggeredById   { get; set; }
+    public int?     TriggeredById   { get; set; } // null = triggered by the scheduled background sync, not a staff member
 
-    public StaffUser TriggeredBy { get; set; } = null!;
+    public StaffUser? TriggeredBy { get; set; }
 }

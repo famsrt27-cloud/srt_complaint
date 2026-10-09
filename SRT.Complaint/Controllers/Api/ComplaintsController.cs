@@ -1,5 +1,4 @@
 #nullable enable
-using System.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using SRT.Complaint.Filters;
 using SRT.Complaint.Models;
@@ -12,24 +11,18 @@ namespace SRT.Complaint.Controllers.Api;
 [ServiceFilter(typeof(ApiKeyAuthFilter))]
 public class ComplaintsController(
     IComplaintService complaintService,
-    IApiRequestLogService logService,
-    ILogger<ComplaintsController> logger) : ApiBaseController(logService, logger)
+    ILogger<ComplaintsController> logger) : ControllerBase
 {
     // ─── GET /api/complaints/{referenceNumber} ───────────────────────────────
     [HttpGet("{referenceNumber}")]
     [RequireScope("complaints:read")]
     public async Task<IActionResult> GetComplaint(string referenceNumber, CancellationToken ct)
     {
-        int statusCode = 200;
-        var sw = Stopwatch.StartNew();
         try
         {
             var complaint = await complaintService.GetByReferenceAsync(referenceNumber, ct);
             if (complaint == null)
-            {
-                statusCode = 404;
                 return NotFound(new { error = $"Complaint '{referenceNumber}' not found" });
-            }
 
             return Ok(new ComplaintReadDto(
                 complaint.ReferenceNumber,
@@ -56,14 +49,8 @@ public class ComplaintsController(
         }
         catch (Exception ex)
         {
-            statusCode = 500;
             logger.LogError(ex, "Error getting complaint {Ref}", referenceNumber);
             return StatusCode(500, new { error = "Internal server error" });
-        }
-        finally
-        {
-            sw.Stop();
-            await LogRequestAsync("GET", $"/api/complaints/{referenceNumber}", null, statusCode, (int)sw.ElapsedMilliseconds);
         }
     }
 
@@ -72,15 +59,10 @@ public class ComplaintsController(
     [RequireScope("complaints:write")]
     public async Task<IActionResult> CreateComplaint([FromBody] ComplaintCreateDto dto, CancellationToken ct)
     {
-        int statusCode = 201;
-        var sw = Stopwatch.StartNew();
         try
         {
             if (!ModelState.IsValid)
-            {
-                statusCode = 400;
                 return BadRequest(new { error = "Invalid request", details = ModelState });
-            }
 
             var request = new SubmitComplaintRequest(
                 ReporterName:   dto.ReporterName,
@@ -96,7 +78,6 @@ public class ComplaintsController(
             );
 
             var complaint = await complaintService.SubmitAsync(request, ct);
-            statusCode = 201;
             return StatusCode(201, new
             {
                 referenceNumber = complaint.ReferenceNumber,
@@ -108,20 +89,13 @@ public class ComplaintsController(
         }
         catch (InvalidOperationException ex)
         {
-            statusCode = 400;
             logger.LogWarning(ex, "Validation error creating complaint");
             return BadRequest(new { error = ex.Message });
         }
         catch (Exception ex)
         {
-            statusCode = 500;
             logger.LogError(ex, "Error creating complaint");
             return StatusCode(500, new { error = "Internal server error" });
-        }
-        finally
-        {
-            sw.Stop();
-            await LogRequestAsync("POST", "/api/complaints", null, statusCode, (int)sw.ElapsedMilliseconds);
         }
     }
 
@@ -130,16 +104,12 @@ public class ComplaintsController(
     [RequireScope("complaints:status")]
     public async Task<IActionResult> GetComplaintStatus(string referenceNumber, CancellationToken ct)
     {
-        int statusCode = 200;
-        var sw = Stopwatch.StartNew();
         try
         {
             var complaint = await complaintService.GetByReferenceAsync(referenceNumber, ct);
             if (complaint == null)
-            {
-                statusCode = 404;
                 return NotFound(new { error = $"Complaint '{referenceNumber}' not found" });
-            }
+
             return Ok(new
             {
                 referenceNumber = complaint.ReferenceNumber,
@@ -152,14 +122,8 @@ public class ComplaintsController(
         }
         catch (Exception ex)
         {
-            statusCode = 500;
             logger.LogError(ex, "Error getting status for {Ref}", referenceNumber);
             return StatusCode(500, new { error = "Internal server error" });
-        }
-        finally
-        {
-            sw.Stop();
-            await LogRequestAsync("GET", $"/api/complaints/{referenceNumber}/status", null, statusCode, (int)sw.ElapsedMilliseconds);
         }
     }
 
@@ -169,22 +133,14 @@ public class ComplaintsController(
     public async Task<IActionResult> UpdateComplaintStatus(
         string referenceNumber, [FromBody] UpdateStatusDto dto, CancellationToken ct)
     {
-        int statusCode = 200;
-        var sw = Stopwatch.StartNew();
         try
         {
             if (!ModelState.IsValid)
-            {
-                statusCode = 400;
                 return BadRequest(new { error = "Invalid request", details = ModelState });
-            }
 
             var complaint = await complaintService.GetByReferenceAsync(referenceNumber, ct);
             if (complaint == null)
-            {
-                statusCode = 404;
                 return NotFound(new { error = $"Complaint '{referenceNumber}' not found" });
-            }
 
             var apiKey = (HttpContext.Items["ApiKey"] as ApiKey)!;
             await complaintService.UpdateStatusAsync(complaint.Id, dto.NewStatus, apiKey.CreatedById, dto.Note, ct);
@@ -192,14 +148,8 @@ public class ComplaintsController(
         }
         catch (Exception ex)
         {
-            statusCode = 500;
             logger.LogError(ex, "Error updating status for {Ref}", referenceNumber);
             return StatusCode(500, new { error = "Internal server error" });
-        }
-        finally
-        {
-            sw.Stop();
-            await LogRequestAsync("PUT", $"/api/complaints/{referenceNumber}/status", null, statusCode, (int)sw.ElapsedMilliseconds);
         }
     }
 
@@ -208,16 +158,11 @@ public class ComplaintsController(
     [RequireScope("complaints:edoc")]
     public async Task<IActionResult> GetEdocPayload(string referenceNumber, CancellationToken ct)
     {
-        int statusCode = 200;
-        var sw = Stopwatch.StartNew();
         try
         {
             var complaint = await complaintService.GetByReferenceAsync(referenceNumber, ct);
             if (complaint == null)
-            {
-                statusCode = 404;
                 return NotFound(new { error = $"Complaint '{referenceNumber}' not found" });
-            }
 
             var lastResolutionNote = complaint.Notes
                 .Where(n => n.NoteType is "PublicReply" or "Internal")
@@ -255,14 +200,8 @@ public class ComplaintsController(
         }
         catch (Exception ex)
         {
-            statusCode = 500;
             logger.LogError(ex, "Error getting eDOC payload for {Ref}", referenceNumber);
             return StatusCode(500, new { error = "Internal server error" });
-        }
-        finally
-        {
-            sw.Stop();
-            await LogRequestAsync("GET", $"/api/complaints/{referenceNumber}/edoc-payload", null, statusCode, (int)sw.ElapsedMilliseconds);
         }
     }
 

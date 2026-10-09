@@ -54,7 +54,8 @@ public class SubmitModel(
             return Page();
         }
 
-        if (!ValidateFiles(out var fileError))
+        var (filesValid, fileError) = await ValidateFilesAsync();
+        if (!filesValid)
         {
             ModelState.AddModelError("Input.Attachments", fileError);
         }
@@ -105,37 +106,30 @@ public class SubmitModel(
         SubCategoriesJson = JsonSerializer.Serialize(grouped);
     }
 
-    private bool ValidateFiles(out string error)
+    private async Task<(bool Valid, string Error)> ValidateFilesAsync()
     {
-        error = string.Empty;
         var files = Input.Attachments;
 
         if (files == null || files.Count == 0)
-            return true;
+            return (true, string.Empty);
 
         if (files.Count > MaxFileCount)
-        {
-            error = $"แนบไฟล์ได้ไม่เกิน {MaxFileCount} ไฟล์";
-            return false;
-        }
+            return (false, $"แนบไฟล์ได้ไม่เกิน {MaxFileCount} ไฟล์");
 
         foreach (var file in files)
         {
             if (file.Length > MaxFileSizeBytes)
-            {
-                error = $"ไฟล์ \"{file.FileName}\" มีขนาดเกิน 10 MB";
-                return false;
-            }
+                return (false, $"ไฟล์ \"{file.FileName}\" มีขนาดเกิน 10 MB");
 
             var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
             if (!AllowedExtensions.Contains(ext))
-            {
-                error = $"ไฟล์ \"{file.FileName}\" ไม่รองรับประเภทไฟล์นี้ (รองรับ: JPG, PNG, PDF, DOC, DOCX)";
-                return false;
-            }
+                return (false, $"ไฟล์ \"{file.FileName}\" ไม่รองรับประเภทไฟล์นี้ (รองรับ: JPG, PNG, PDF, DOC, DOCX)");
+
+            if (!await FileSignatureValidator.HasValidSignatureAsync(file, ext))
+                return (false, $"ไฟล์ \"{file.FileName}\" มีเนื้อหาไม่ตรงกับนามสกุลไฟล์");
         }
 
-        return true;
+        return (true, string.Empty);
     }
 }
 

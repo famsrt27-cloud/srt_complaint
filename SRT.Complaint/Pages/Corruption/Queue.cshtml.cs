@@ -3,8 +3,6 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
-using Microsoft.EntityFrameworkCore;
-using SRT.Complaint.Data;
 using SRT.Complaint.Services;
 
 namespace SRT.Complaint.Pages.Corruption;
@@ -12,7 +10,7 @@ namespace SRT.Complaint.Pages.Corruption;
 [Authorize(Policy = "CorruptionAccess")]
 public class QueueModel(
     ICorruptionService corruptionService,
-    AppDbContext appDb) : PageModel
+    IStaffDirectoryService staffDirectory) : PageModel
 {
     [BindProperty(SupportsGet = true)] public string? Status { get; set; }
     [BindProperty(SupportsGet = true)] public int CurrentPage { get; set; } = 1;
@@ -37,18 +35,12 @@ public class QueueModel(
         TotalCount = await corruptionService.GetTotalCountAsync(filter);
         TotalPages = (int)Math.Ceiling((double)TotalCount / PageSize);
 
-        // Load staff names from AppDbContext (cross-context: no FK on CorruptionDbContext)
+        // Staff names resolved via IStaffDirectoryService (no FK across CorruptionDbContext/AppDbContext)
         var assignedIds = reports
             .Where(r => r.AssignedToId.HasValue)
-            .Select(r => r.AssignedToId!.Value)
-            .Distinct()
-            .ToList();
+            .Select(r => r.AssignedToId!.Value);
 
-        var staffNames = assignedIds.Any()
-            ? await appDb.StaffUsers
-                .Where(u => assignedIds.Contains(u.Id))
-                .ToDictionaryAsync(u => u.Id, u => u.FullName)
-            : new Dictionary<int, string>();
+        var staffNames = await staffDirectory.GetNamesByIdsAsync(assignedIds);
 
         var now = DateTime.UtcNow;
         Reports = reports.Select(r => new CorruptionQueueRowVm(

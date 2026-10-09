@@ -1,13 +1,10 @@
 @page
 @model SRT.Complaint.Pages.Admin.HomeContentModel
-@{
-    ViewData["Title"] = "จัดการเนื้อหาหน้าแรก";
-}
 
 <div class="mb-6 flex items-center justify-between">
     <div>
         <h1 class="text-xl font-bold text-gray-900">จัดการเนื้อหาหน้าแรก</h1>
-        <p class="text-sm text-gray-500 mt-1">แก้ไขเนื้อหาที่แสดงใน 3 popup ของหน้าแรก — รองรับ HTML และรูปภาพ</p>
+        <p class="text-sm text-gray-500 mt-1">แก้ไขเนื้อหาที่แสดงใน 3 popup ของหน้าแรก — กรอกทีละช่อง ไม่ต้องเขียนโค้ด</p>
     </div>
     <a href="/" target="_blank"
        class="inline-flex items-center gap-1.5 text-xs text-srt-navy font-medium
@@ -38,12 +35,9 @@
               d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
     </svg>
     <span>
-        เนื้อหาใช้ <strong>HTML</strong> — tag ที่แนะนำ:
-        <code class="bg-blue-100 px-1 rounded mx-0.5">&lt;ol class="step-list"&gt;</code>
-        <code class="bg-blue-100 px-1 rounded mx-0.5">&lt;dl class="contact-dl"&gt;</code>
-        <code class="bg-blue-100 px-1 rounded mx-0.5">&lt;ul class="trust-ul"&gt;</code>
-        <code class="bg-blue-100 px-1 rounded mx-0.5">&lt;img class="content-image" src="..."&gt;</code>
-        · Tailwind จะไม่ทำงานในหน้าแรก
+        กรอกข้อมูลทีละช่อง ระบบจะจัดหน้าตาให้อัตโนมัติ — ใช้ปุ่ม
+        <strong>+ เพิ่มรายการ</strong> / ลูกศร ▲▼ (เรียงลำดับ) / ✕ (ลบ) ในแต่ละรายการ ·
+        พิมพ์ <code class="bg-blue-100 px-1 rounded">**ข้อความ**</code> เพื่อทำ<strong>ตัวหนา</strong>บางส่วนได้
     </span>
 </div>
 
@@ -72,41 +66,169 @@
 
     <!-- ── Section: Steps ── -->
     <div id="section-steps" class="content-section">
-        @await Html.PartialAsync("_ContentBlockEditor", new ViewDataDictionary(ViewData)
-        {
-            ["Prefix"]      = "StepsInput",
-            ["Title"]       = Model.StepsInput.Title,
-            ["Body"]        = Model.StepsInput.Body,
-            ["UpdatedAt"]   = Model.Steps.UpdatedAt,
-            ["Label"]       = "ขั้นตอนการร้องเรียน",
-            ["Hint"]        = "ใช้ &lt;ol class=\"step-list\"&gt;&lt;li&gt;&lt;b&gt;หัวข้อ&lt;/b&gt;&lt;p&gt;รายละเอียด&lt;/p&gt;&lt;/li&gt;...&lt;/ol&gt; แล้วปิดด้วย &lt;p class=\"sla-note\"&gt;...&lt;/p&gt;"
-        })
+        <div class="bg-white rounded-xl border border-gray-200 shadow-sm">
+            <div class="px-5 py-4 border-b border-gray-100">
+                <h2 class="font-semibold text-gray-900 text-sm">ขั้นตอนการร้องเรียน</h2>
+                <p class="text-xs text-gray-400 mt-0.5">
+                    อัปเดตล่าสุด: @(Model.StepsUpdatedAt == default ? "ยังไม่เคยบันทึก" : Model.StepsUpdatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm"))
+                </p>
+            </div>
+            <div class="p-5 space-y-4">
+                <div>
+                    <label asp-for="StepsInput.Title" class="form-label">หัวข้อ Popup</label>
+                    <input asp-for="StepsInput.Title" type="text" class="form-input" placeholder="หัวข้อที่แสดงบน popup" />
+                </div>
+
+                <div>
+                    <label class="form-label mb-2 block">ขั้นตอน</label>
+                    <div id="steps-items" class="space-y-2"></div>
+                    <button type="button" onclick="stepsRepeater.add()"
+                            class="mt-2 text-xs font-medium text-srt-navy hover:underline">
+                        + เพิ่มขั้นตอน
+                    </button>
+                    <input type="hidden" asp-for="StepsInput.ItemsJson" id="StepsInput_ItemsJson" />
+                </div>
+
+                <div>
+                    <label asp-for="StepsInput.SlaNote" class="form-label">ข้อความสรุประยะเวลา (แสดงเป็น badge ท้ายรายการ)</label>
+                    <input asp-for="StepsInput.SlaNote" type="text" class="form-input" placeholder="เช่น ระยะเวลาดำเนินการไม่เกิน 15 วันทำการ" />
+                </div>
+
+                <div>
+                    <label class="form-label">รูปภาพประกอบ (ถ้ามี)</label>
+                    <div class="flex items-center gap-3">
+                        <div id="steps-image-preview" class="w-20 h-20 rounded-lg border border-gray-200 bg-gray-50 overflow-hidden shrink-0 flex items-center justify-center text-gray-300 text-[10px] text-center">
+                            @if (!string.IsNullOrEmpty(Model.StepsInput.ImageUrl))
+                            {
+                                <img src="@Model.StepsInput.ImageUrl" class="w-full h-full object-cover" alt="" />
+                            }
+                            else
+                            {
+                                @:ไม่มีรูป
+                            }
+                        </div>
+                        <div class="flex-1 space-y-2">
+                            <input asp-for="StepsInput.ImageUrl" type="text" id="StepsInput_ImageUrl" class="form-input" placeholder="วางลิงก์รูปภาพ หรืออัปโหลดไฟล์ด้านล่าง" />
+                            <label class="inline-flex items-center gap-1.5 text-xs text-srt-navy font-medium cursor-pointer hover:underline">
+                                <input type="file" accept="image/png,image/jpeg" class="hidden"
+                                       onchange="uploadContentImage(this, 'StepsInput_ImageUrl', 'steps-image-preview')" />
+                                📤 อัปโหลดรูปภาพ (JPG/PNG ไม่เกิน 5MB)
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- ── Section: Contact ── -->
     <div id="section-contact" class="content-section hidden">
-        @await Html.PartialAsync("_ContentBlockEditor", new ViewDataDictionary(ViewData)
-        {
-            ["Prefix"]      = "ContactInput",
-            ["Title"]       = Model.ContactInput.Title,
-            ["Body"]        = Model.ContactInput.Body,
-            ["UpdatedAt"]   = Model.Contact.UpdatedAt,
-            ["Label"]       = "ช่องทางติดต่อ",
-            ["Hint"]        = "ใช้ &lt;dl class=\"contact-dl\"&gt;&lt;div&gt;&lt;dt&gt;ป้ายกำกับ&lt;/dt&gt;&lt;dd&gt;ค่า&lt;/dd&gt;&lt;/div&gt;...&lt;/dl&gt;"
-        })
+        <div class="bg-white rounded-xl border border-gray-200 shadow-sm">
+            <div class="px-5 py-4 border-b border-gray-100">
+                <h2 class="font-semibold text-gray-900 text-sm">ช่องทางติดต่อ</h2>
+                <p class="text-xs text-gray-400 mt-0.5">
+                    อัปเดตล่าสุด: @(Model.ContactUpdatedAt == default ? "ยังไม่เคยบันทึก" : Model.ContactUpdatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm"))
+                </p>
+            </div>
+            <div class="p-5 space-y-4">
+                <div>
+                    <label asp-for="ContactInput.Title" class="form-label">หัวข้อ Popup</label>
+                    <input asp-for="ContactInput.Title" type="text" class="form-input" placeholder="หัวข้อที่แสดงบน popup" />
+                </div>
+
+                <div>
+                    <label class="form-label mb-2 block">ช่องทางติดต่อ</label>
+                    <div id="contact-items" class="space-y-2"></div>
+                    <button type="button" onclick="contactRepeater.add()"
+                            class="mt-2 text-xs font-medium text-srt-navy hover:underline">
+                        + เพิ่มช่องทาง
+                    </button>
+                    <input type="hidden" asp-for="ContactInput.ItemsJson" id="ContactInput_ItemsJson" />
+                </div>
+
+                <div>
+                    <label class="form-label">รูปภาพประกอบ (ถ้ามี)</label>
+                    <div class="flex items-center gap-3">
+                        <div id="contact-image-preview" class="w-20 h-20 rounded-lg border border-gray-200 bg-gray-50 overflow-hidden shrink-0 flex items-center justify-center text-gray-300 text-[10px] text-center">
+                            @if (!string.IsNullOrEmpty(Model.ContactInput.ImageUrl))
+                            {
+                                <img src="@Model.ContactInput.ImageUrl" class="w-full h-full object-cover" alt="" />
+                            }
+                            else
+                            {
+                                @:ไม่มีรูป
+                            }
+                        </div>
+                        <div class="flex-1 space-y-2">
+                            <input asp-for="ContactInput.ImageUrl" type="text" id="ContactInput_ImageUrl" class="form-input" placeholder="วางลิงก์รูปภาพ หรืออัปโหลดไฟล์ด้านล่าง" />
+                            <label class="inline-flex items-center gap-1.5 text-xs text-srt-navy font-medium cursor-pointer hover:underline">
+                                <input type="file" accept="image/png,image/jpeg" class="hidden"
+                                       onchange="uploadContentImage(this, 'ContactInput_ImageUrl', 'contact-image-preview')" />
+                                📤 อัปโหลดรูปภาพ (JPG/PNG ไม่เกิน 5MB)
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- ── Section: Trust ── -->
     <div id="section-trust" class="content-section hidden">
-        @await Html.PartialAsync("_ContentBlockEditor", new ViewDataDictionary(ViewData)
-        {
-            ["Prefix"]      = "TrustInput",
-            ["Title"]       = Model.TrustInput.Title,
-            ["Body"]        = Model.TrustInput.Body,
-            ["UpdatedAt"]   = Model.Trust.UpdatedAt,
-            ["Label"]       = "ความปลอดภัย & ความเป็นส่วนตัว",
-            ["Hint"]        = "ใช้ &lt;ul class=\"trust-ul\"&gt;&lt;li&gt;ข้อความ&lt;/li&gt;...&lt;/ul&gt; แล้วปิดด้วย &lt;p class=\"pdpa-note\"&gt;หมายเหตุ&lt;/p&gt;"
-        })
+        <div class="bg-white rounded-xl border border-gray-200 shadow-sm">
+            <div class="px-5 py-4 border-b border-gray-100">
+                <h2 class="font-semibold text-gray-900 text-sm">ความปลอดภัย &amp; ความเป็นส่วนตัว</h2>
+                <p class="text-xs text-gray-400 mt-0.5">
+                    อัปเดตล่าสุด: @(Model.TrustUpdatedAt == default ? "ยังไม่เคยบันทึก" : Model.TrustUpdatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm"))
+                </p>
+            </div>
+            <div class="p-5 space-y-4">
+                <div>
+                    <label asp-for="TrustInput.Title" class="form-label">หัวข้อ Popup</label>
+                    <input asp-for="TrustInput.Title" type="text" class="form-input" placeholder="หัวข้อที่แสดงบน popup" />
+                </div>
+
+                <div>
+                    <label class="form-label mb-2 block">รายการข้อความ</label>
+                    <div id="trust-items" class="space-y-2"></div>
+                    <button type="button" onclick="trustRepeater.add()"
+                            class="mt-2 text-xs font-medium text-srt-navy hover:underline">
+                        + เพิ่มข้อความ
+                    </button>
+                    <input type="hidden" asp-for="TrustInput.ItemsJson" id="TrustInput_ItemsJson" />
+                </div>
+
+                <div>
+                    <label asp-for="TrustInput.Note" class="form-label">หมายเหตุท้ายรายการ (เช่น ช่องทางติดต่อ DPO)</label>
+                    <textarea asp-for="TrustInput.Note" rows="2" class="form-textarea"
+                              placeholder="เช่น หากมีข้อสงสัยเรื่องการคุ้มครองข้อมูลส่วนบุคคล กรุณาติดต่อ..."></textarea>
+                </div>
+
+                <div>
+                    <label class="form-label">รูปภาพประกอบ (ถ้ามี)</label>
+                    <div class="flex items-center gap-3">
+                        <div id="trust-image-preview" class="w-20 h-20 rounded-lg border border-gray-200 bg-gray-50 overflow-hidden shrink-0 flex items-center justify-center text-gray-300 text-[10px] text-center">
+                            @if (!string.IsNullOrEmpty(Model.TrustInput.ImageUrl))
+                            {
+                                <img src="@Model.TrustInput.ImageUrl" class="w-full h-full object-cover" alt="" />
+                            }
+                            else
+                            {
+                                @:ไม่มีรูป
+                            }
+                        </div>
+                        <div class="flex-1 space-y-2">
+                            <input asp-for="TrustInput.ImageUrl" type="text" id="TrustInput_ImageUrl" class="form-input" placeholder="วางลิงก์รูปภาพ หรืออัปโหลดไฟล์ด้านล่าง" />
+                            <label class="inline-flex items-center gap-1.5 text-xs text-srt-navy font-medium cursor-pointer hover:underline">
+                                <input type="file" accept="image/png,image/jpeg" class="hidden"
+                                       onchange="uploadContentImage(this, 'TrustInput_ImageUrl', 'trust-image-preview')" />
+                                📤 อัปโหลดรูปภาพ (JPG/PNG ไม่เกิน 5MB)
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <div class="flex items-center gap-4 mt-6">
@@ -123,6 +245,43 @@
 @section Scripts {
     <partial name="_ValidationScriptsPartial" />
     <script>
+        function uploadContentImage(fileInput, targetInputId, previewId) {
+            var file = fileInput.files[0];
+            if (!file) return;
+
+            var targetInput = document.getElementById(targetInputId);
+            var preview = document.getElementById(previewId);
+            var token = document.querySelector('#content-form input[name="__RequestVerificationToken"]').value;
+
+            var formData = new FormData();
+            formData.append('file', file);
+            formData.append('__RequestVerificationToken', token);
+
+            preview.textContent = 'กำลังอัปโหลด...';
+
+            fetch('@Url.Page("HomeContent", "UploadImage")', { method: 'POST', body: formData })
+                .then(function(res) {
+                    return res.json().then(function(data) {
+                        if (!res.ok) throw new Error(data.error || 'อัปโหลดไม่สำเร็จ');
+                        return data;
+                    });
+                })
+                .then(function(data) {
+                    targetInput.value = data.url;
+                    preview.innerHTML = '';
+                    var img = document.createElement('img');
+                    img.src = data.url;
+                    img.className = 'w-full h-full object-cover';
+                    img.alt = '';
+                    preview.appendChild(img);
+                })
+                .catch(function(err) {
+                    preview.textContent = 'ไม่มีรูป';
+                    alert(err.message || 'อัปโหลดรูปภาพไม่สำเร็จ กรุณาลองใหม่');
+                })
+                .finally(function() { fileInput.value = ''; });
+        }
+
         var sections = ['steps', 'contact', 'trust'];
 
         function switchSection(name) {
@@ -141,28 +300,120 @@
             });
         }
 
-        function switchEditorTab(prefix, tab) {
-            var editorPane  = document.getElementById(prefix + '-editor');
-            var previewPane = document.getElementById(prefix + '-preview');
-            var editBtn     = document.getElementById(prefix + '-tab-edit');
-            var previewBtn  = document.getElementById(prefix + '-tab-preview');
-            var activeClass = 'bg-white shadow-sm text-gray-900';
-            var inactiveClass = 'text-gray-500 hover:text-gray-700';
+        /* ── Generic repeater: renders `fields` for each item in a plain-JS
+           array, keeps a hidden input in sync as JSON on every keystroke. ── */
+        function createRepeater(containerId, hiddenInputId, fields, initialItems) {
+            var container = document.getElementById(containerId);
+            var hidden = document.getElementById(hiddenInputId);
+            var items = (initialItems && initialItems.length) ? initialItems : [emptyItem()];
 
-            if (tab === 'edit') {
-                editorPane.classList.remove('hidden');
-                previewPane.classList.add('hidden');
-                editBtn.className   = 'px-3 py-1 text-xs font-medium rounded-md transition ' + activeClass;
-                previewBtn.className = 'px-3 py-1 text-xs font-medium rounded-md transition ' + inactiveClass;
-            } else {
-                editorPane.classList.add('hidden');
-                previewPane.classList.remove('hidden');
-                previewBtn.className = 'px-3 py-1 text-xs font-medium rounded-md transition ' + activeClass;
-                editBtn.className    = 'px-3 py-1 text-xs font-medium rounded-md transition ' + inactiveClass;
-                document.getElementById(prefix + '-preview-content').innerHTML =
-                    document.getElementById(prefix + '_Body').value;
+            function emptyItem() {
+                var obj = {};
+                fields.forEach(function(f) { obj[f.key] = f.type === 'checkbox' ? false : ''; });
+                return obj;
             }
+
+            function serialize() {
+                hidden.value = JSON.stringify(items);
+            }
+
+            function iconBtn(label, title, onClick, extraClass) {
+                var btn = document.createElement('button');
+                btn.type = 'button';
+                btn.title = title;
+                btn.className = 'repeater-icon-btn' + (extraClass ? ' ' + extraClass : '');
+                btn.textContent = label;
+                btn.addEventListener('click', onClick);
+                return btn;
+            }
+
+            function render() {
+                container.innerHTML = '';
+                items.forEach(function(item, idx) {
+                    var row = document.createElement('div');
+                    row.className = 'flex items-start gap-2 bg-gray-50 border border-gray-200 rounded-xl p-3';
+
+                    var fieldsWrap = document.createElement('div');
+                    fieldsWrap.className = 'flex-1 space-y-2';
+
+                    fields.forEach(function(f) {
+                        if (f.type === 'checkbox') {
+                            var lbl = document.createElement('label');
+                            lbl.className = 'flex items-center gap-2 text-xs text-gray-600 select-none';
+                            var cb = document.createElement('input');
+                            cb.type = 'checkbox';
+                            cb.checked = !!item[f.key];
+                            cb.className = 'rounded border-gray-300 text-srt-navy';
+                            cb.addEventListener('change', function() { item[f.key] = cb.checked; serialize(); });
+                            lbl.appendChild(cb);
+                            lbl.appendChild(document.createTextNode(f.label));
+                            fieldsWrap.appendChild(lbl);
+                        } else {
+                            var inputEl = document.createElement(f.type === 'textarea' ? 'textarea' : 'input');
+                            if (f.type === 'textarea') { inputEl.rows = 2; inputEl.className = 'form-textarea-compact'; }
+                            else { inputEl.type = 'text'; inputEl.className = 'form-input-compact'; }
+                            inputEl.value = item[f.key] || '';
+                            inputEl.placeholder = f.placeholder || '';
+                            inputEl.addEventListener('input', function() { item[f.key] = inputEl.value; serialize(); });
+                            fieldsWrap.appendChild(inputEl);
+                        }
+                    });
+
+                    row.appendChild(fieldsWrap);
+
+                    var controls = document.createElement('div');
+                    controls.className = 'flex flex-col gap-1 shrink-0';
+                    var up = iconBtn('▲', 'เลื่อนขึ้น', function() { move(idx, -1); });
+                    if (idx === 0) up.disabled = true;
+                    var down = iconBtn('▼', 'เลื่อนลง', function() { move(idx, 1); });
+                    if (idx === items.length - 1) down.disabled = true;
+                    var del = iconBtn('✕', 'ลบ', function() { remove(idx); }, 'danger');
+                    controls.appendChild(up);
+                    controls.appendChild(down);
+                    controls.appendChild(del);
+                    row.appendChild(controls);
+
+                    container.appendChild(row);
+                });
+                serialize();
+            }
+
+            function move(idx, dir) {
+                var target = idx + dir;
+                if (target < 0 || target >= items.length) return;
+                var tmp = items[idx];
+                items[idx] = items[target];
+                items[target] = tmp;
+                render();
+            }
+
+            function remove(idx) {
+                items.splice(idx, 1);
+                if (items.length === 0) items.push(emptyItem());
+                render();
+            }
+
+            render();
+
+            return {
+                add: function() { items.push(emptyItem()); render(); }
+            };
         }
+
+        var stepsRepeater = createRepeater('steps-items', 'StepsInput_ItemsJson', [
+            { key: 'title', type: 'text', placeholder: 'หัวข้อขั้นตอน เช่น ยื่นเรื่องออนไลน์' },
+            { key: 'description', type: 'textarea', placeholder: 'รายละเอียด — อธิบายว่าขั้นตอนนี้เกิดอะไรขึ้น' },
+            { key: 'done', type: 'checkbox', label: 'ขั้นตอนนี้เสร็จสมบูรณ์แล้ว (แสดงวงกลมสีเขียว)' }
+        ], @Html.Raw(Model.StepsInput.ItemsJson));
+
+        var contactRepeater = createRepeater('contact-items', 'ContactInput_ItemsJson', [
+            { key: 'label', type: 'text', placeholder: 'ป้ายกำกับ เช่น สายด่วน' },
+            { key: 'value', type: 'text', placeholder: 'ข้อมูลติดต่อ เช่น 1690' }
+        ], @Html.Raw(Model.ContactInput.ItemsJson));
+
+        var trustRepeater = createRepeater('trust-items', 'TrustInput_ItemsJson', [
+            { key: 'text', type: 'textarea', placeholder: 'พิมพ์ **ข้อความ** เพื่อทำตัวหนาบางส่วนได้' }
+        ], @Html.Raw(Model.TrustInput.ItemsJson));
     </script>
 
     <style>

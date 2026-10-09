@@ -3,9 +3,8 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
-using Microsoft.EntityFrameworkCore;
-using SRT.Complaint.Data;
 using SRT.Complaint.Models;
+using SRT.Complaint.Models.Corruption;
 using SRT.Complaint.Services;
 
 namespace SRT.Complaint.Pages.Corruption;
@@ -14,7 +13,7 @@ namespace SRT.Complaint.Pages.Corruption;
 public class CaseDetailModel(
     ICorruptionService corruptionService,
     IPdfExportService pdfExportService,
-    AppDbContext appDb) : PageModel
+    IStaffDirectoryService staffDirectory) : PageModel
 {
     // Action bindings
     [BindProperty] public string?  InvLogContent        { get; set; }
@@ -160,11 +159,7 @@ public class CaseDetailModel(
         foreach (var log  in report.InvestigationLogs) staffIds.Add(log.AuthorId);
         foreach (var dlog in report.DecryptionLogs)    staffIds.Add(dlog.RequestedById);
 
-        StaffNames = staffIds.Any()
-            ? await appDb.StaffUsers
-                .Where(u => staffIds.Contains(u.Id))
-                .ToDictionaryAsync(u => u.Id, u => u.FullName)
-            : new Dictionary<int, string>();
+        StaffNames = await staffDirectory.GetNamesByIdsAsync(staffIds);
 
         return Page();
     }

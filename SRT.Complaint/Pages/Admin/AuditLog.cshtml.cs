@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
 using SRT.Complaint.Data;
 using SRT.Complaint.Models;
+using SRT.Complaint.Models.Corruption;
 
 namespace SRT.Complaint.Pages.Admin;
 

@@ -17,12 +17,12 @@ namespace SRT.Complaint.Data.Migrations.Corruption
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "9.0.16")
+                .HasAnnotation("ProductVersion", "9.0.18")
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
-            modelBuilder.Entity("SRT.Complaint.Models.CorruptionReport", b =>
+            modelBuilder.Entity("SRT.Complaint.Models.Corruption.CorruptionReport", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -123,7 +123,7 @@ namespace SRT.Complaint.Data.Migrations.Corruption
                     b.ToTable("Reports", "corruption");
                 });
 
-            modelBuilder.Entity("SRT.Complaint.Models.DecryptionLog", b =>
+            modelBuilder.Entity("SRT.Complaint.Models.Corruption.DecryptionLog", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -156,7 +156,7 @@ namespace SRT.Complaint.Data.Migrations.Corruption
                     b.ToTable("DecryptionLogs", "corruption");
                 });
 
-            modelBuilder.Entity("SRT.Complaint.Models.InvestigationLog", b =>
+            modelBuilder.Entity("SRT.Complaint.Models.Corruption.InvestigationLog", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -187,9 +187,9 @@ namespace SRT.Complaint.Data.Migrations.Corruption
                     b.ToTable("InvestigationLogs", "corruption");
                 });
 
-            modelBuilder.Entity("SRT.Complaint.Models.DecryptionLog", b =>
+            modelBuilder.Entity("SRT.Complaint.Models.Corruption.DecryptionLog", b =>
                 {
-                    b.HasOne("SRT.Complaint.Models.CorruptionReport", "Report")
+                    b.HasOne("SRT.Complaint.Models.Corruption.CorruptionReport", "Report")
                         .WithMany("DecryptionLogs")
                         .HasForeignKey("ReportId")
                         .OnDelete(DeleteBehavior.Restrict)
@@ -198,9 +198,9 @@ namespace SRT.Complaint.Data.Migrations.Corruption
                     b.Navigation("Report");
                 });
 
-            modelBuilder.Entity("SRT.Complaint.Models.InvestigationLog", b =>
+            modelBuilder.Entity("SRT.Complaint.Models.Corruption.InvestigationLog", b =>
                 {
-                    b.HasOne("SRT.Complaint.Models.CorruptionReport", "Report")
+                    b.HasOne("SRT.Complaint.Models.Corruption.CorruptionReport", "Report")
                         .WithMany("InvestigationLogs")
                         .HasForeignKey("ReportId")
                         .OnDelete(DeleteBehavior.Restrict)
@@ -209,7 +209,7 @@ namespace SRT.Complaint.Data.Migrations.Corruption
                     b.Navigation("Report");
                 });
 
-            modelBuilder.Entity("SRT.Complaint.Models.CorruptionReport", b =>
+            modelBuilder.Entity("SRT.Complaint.Models.Corruption.CorruptionReport", b =>
                 {
                     b.Navigation("DecryptionLogs");
 

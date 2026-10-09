@@ -1,5 +1,4 @@
 #nullable enable
-using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using SRT.Complaint.Filters;
@@ -13,8 +12,7 @@ namespace SRT.Complaint.Controllers.Api;
 [ServiceFilter(typeof(ApiKeyAuthFilter))]
 public class WebhooksController(
     IWebhookService webhookService,
-    IApiRequestLogService logService,
-    ILogger<WebhooksController> logger) : ApiBaseController(logService, logger)
+    ILogger<WebhooksController> logger) : ControllerBase
 {
     private static readonly string[] AllowedEvents =
     [
@@ -28,8 +26,6 @@ public class WebhooksController(
     [RequireScope("webhooks:manage")]
     public async Task<IActionResult> ListWebhooks(CancellationToken ct)
     {
-        int statusCode = 200;
-        var sw = Stopwatch.StartNew();
         try
         {
             var apiKey = (HttpContext.Items["ApiKey"] as ApiKey)!;
@@ -43,14 +39,8 @@ public class WebhooksController(
         }
         catch (Exception ex)
         {
-            statusCode = 500;
             logger.LogError(ex, "Error listing webhooks");
             return StatusCode(500, new { error = "Internal server error" });
-        }
-        finally
-        {
-            sw.Stop();
-            await LogRequestAsync("GET", "/api/webhooks", null, statusCode, (int)sw.ElapsedMilliseconds);
         }
     }
 
@@ -59,27 +49,18 @@ public class WebhooksController(
     [RequireScope("webhooks:manage")]
     public async Task<IActionResult> CreateWebhook([FromBody] CreateWebhookDto dto, CancellationToken ct)
     {
-        int statusCode = 201;
-        var sw = Stopwatch.StartNew();
         try
         {
             if (!ModelState.IsValid)
-            {
-                statusCode = 400;
                 return BadRequest(new { error = "Invalid request", details = ModelState });
-            }
 
             var invalidEvents = dto.Events.Except(AllowedEvents, StringComparer.OrdinalIgnoreCase).ToList();
             if (invalidEvents.Count > 0)
-            {
-                statusCode = 400;
                 return BadRequest(new { error = $"Unknown events: {string.Join(", ", invalidEvents)}", allowedEvents = AllowedEvents });
-            }
 
             var apiKey = (HttpContext.Items["ApiKey"] as ApiKey)!;
             var (webhook, rawSecret) = await webhookService.CreateAsync(apiKey.Id, dto.Name, dto.TargetUrl, dto.Events, ct);
 
-            statusCode = 201;
             return StatusCode(201, new
             {
                 webhook.Id, webhook.Name, webhook.TargetUrl, webhook.IsActive, webhook.CreatedAt,
@@ -90,14 +71,8 @@ public class WebhooksController(
         }
         catch (Exception ex)
         {
-            statusCode = 500;
             logger.LogError(ex, "Error creating webhook");
             return StatusCode(500, new { error = "Internal server error" });
-        }
-        finally
-        {
-            sw.Stop();
-            await LogRequestAsync("POST", "/api/webhooks", null, statusCode, (int)sw.ElapsedMilliseconds);
         }
     }
 
@@ -106,30 +81,20 @@ public class WebhooksController(
     [RequireScope("webhooks:manage")]
     public async Task<IActionResult> DeleteWebhook(int id, CancellationToken ct)
     {
-        int statusCode = 200;
-        var sw = Stopwatch.StartNew();
         try
         {
             var apiKey = (HttpContext.Items["ApiKey"] as ApiKey)!;
             var webhooks = await webhookService.ListByApiKeyAsync(apiKey.Id, ct);
             if (!webhooks.Any(w => w.Id == id))
-            {
-                statusCode = 404;
                 return NotFound(new { error = "Webhook not found" });
-            }
+
             await webhookService.DeleteAsync(id, ct);
             return Ok(new { message = "ลบ webhook เรียบร้อยแล้ว" });
         }
         catch (Exception ex)
         {
-            statusCode = 500;
             logger.LogError(ex, "Error deleting webhook {Id}", id);
             return StatusCode(500, new { error = "Internal server error" });
-        }
-        finally
-        {
-            sw.Stop();
-            await LogRequestAsync("DELETE", $"/api/webhooks/{id}", null, statusCode, (int)sw.ElapsedMilliseconds);
         }
     }
 

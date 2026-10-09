@@ -170,8 +170,49 @@
     @apply mt-1.5 text-xs text-red-600 flex items-center gap-1;
   }
 
+  /* Invalid fields get a border + background change, not color-only, so the
+     error state doesn't rely on color alone (WCAG 1.4.1). Applied by
+     jQuery unobtrusive validation's "input-validation-error" class. */
+  .form-input.input-validation-error,
+  .form-select.input-validation-error,
+  .form-textarea.input-validation-error,
+  .form-input-compact.input-validation-error {
+    @apply border-red-400 bg-red-50/40 ring-2 ring-red-100;
+  }
+
+  .field-validation-error::before {
+    content: "⚠ ";
+  }
+
   .form-hint {
     @apply mt-1.5 text-xs text-gray-400;
+  }
+
+  /* Compact variant for dense staff/admin forms (tables, inline edit rows) —
+     same recipe repeated ad hoc across Staff/Corruption/Admin pages, named
+     here so it's one shared class instead of copy-pasted utility strings. */
+  .form-input-compact {
+    @apply w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white
+           focus:outline-none focus:border-srt-navy transition-colors;
+  }
+
+  .form-select-compact {
+    @apply form-input-compact;
+  }
+
+  .form-textarea-compact {
+    @apply form-input-compact resize-none;
+  }
+
+  /* ══ Repeater rows (Admin/HomeContent structured editors) ══ */
+  .repeater-icon-btn {
+    @apply w-7 h-7 flex items-center justify-center rounded-lg border border-gray-200
+           text-gray-500 bg-white hover:bg-gray-100 hover:text-gray-800
+           disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-white
+           transition-colors shrink-0;
+  }
+  .repeater-icon-btn.danger {
+    @apply text-red-500 hover:bg-red-50 hover:text-red-700 hover:border-red-200;
   }
 
   /* ══ Alert banners ══ */
@@ -253,6 +294,30 @@
     @apply bg-white/15 text-white shadow-inner-glow;
   }
 
+  /* ══ Collapsible sidebar section header ══ */
+  .section-title-btn {
+    @apply w-full flex items-center justify-between text-xs font-bold text-gray-400 uppercase tracking-widest
+           px-3 pt-5 pb-1.5 hover:text-slate-200 transition-colors cursor-pointer bg-transparent border-0;
+  }
+
+  .section-chevron {
+    @apply w-3 h-3 shrink-0 transition-transform duration-150;
+  }
+
+  .sidebar-section-body {
+    @apply grid gap-1;
+    grid-template-rows: 1fr;
+    transition: grid-template-rows 0.15s ease;
+  }
+
+  .sidebar-section-body > div {
+    overflow: hidden;
+  }
+
+  .sidebar-section-body.collapsed {
+    grid-template-rows: 0fr;
+  }
+
   /* ══ Spinner ══ */
   .spinner {
     @apply inline-block w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin;
@@ -313,6 +378,73 @@
   kbd {
     @apply inline-flex items-center px-1.5 py-0.5 rounded text-xs font-mono
            bg-gray-100 border border-gray-300 text-gray-600 shadow-sm;
+  }
+
+  /* ══ Terms/rich-text content — used for both the WYSIWYG preview
+     and the actual modal shown to end users, so it must not depend
+     on Tailwind utility classes typed into the content itself. ══ */
+  .terms-content {
+    @apply text-sm text-gray-700 leading-relaxed;
+  }
+  .terms-content :where(h1, h2, h3) {
+    @apply font-semibold text-gray-900 mt-4 mb-2 first:mt-0;
+  }
+  .terms-content h1 { @apply text-lg; }
+  .terms-content h2 { @apply text-base; }
+  .terms-content h3, .terms-content h4 { @apply text-sm; }
+  .terms-content p { @apply mb-3 last:mb-0; }
+  .terms-content ul { @apply list-disc pl-5 mb-3 space-y-1; }
+  .terms-content ol { @apply list-decimal pl-5 mb-3 space-y-1; }
+  .terms-content li > ul, .terms-content li > ol { @apply mt-1 mb-0; }
+  .terms-content strong { @apply font-semibold text-gray-900; }
+  .terms-content em { @apply italic; }
+  .terms-content a { @apply text-srt-navy underline hover:text-srt-navy-light; }
+  .terms-content blockquote {
+    @apply border-l-4 border-gray-200 pl-4 italic text-gray-600 my-3;
+  }
+  .terms-content hr {
+    @apply my-4 h-0 border-0 border-t border-gray-200;
+  }
+
+  /* Quill indent format ships as a bare .ql-indent-N class with no
+     page-wide CSS (Quill only styles it inside its own editor chrome),
+     so the public-facing render needs its own copy of the scale. */
+  .terms-content .ql-indent-1 { padding-left: 2em; }
+  .terms-content .ql-indent-2 { padding-left: 4em; }
+  .terms-content .ql-indent-3 { padding-left: 6em; }
+  .terms-content .ql-indent-4 { padding-left: 8em; }
+  .terms-content .ql-indent-5 { padding-left: 10em; }
+  .terms-content .ql-indent-6 { padding-left: 12em; }
+  .terms-content .ql-indent-7 { padding-left: 14em; }
+  .terms-content .ql-indent-8 { padding-left: 16em; }
+
+  /* Tables inserted via the quill-table-better toolbar button */
+  .terms-content table {
+    @apply w-full border-collapse text-sm my-3;
+  }
+  .terms-content table td, .terms-content table th {
+    @apply border border-gray-200 px-3 py-2 align-top;
+  }
+  .terms-content table th {
+    @apply bg-gray-50 font-semibold text-gray-900;
+  }
+
+  /* ══ Quill WYSIWYG editor — match form-input look ══ */
+  .terms-editor .ql-toolbar.ql-snow {
+    @apply rounded-t-xl border-gray-200 bg-gray-50;
+  }
+  .terms-editor .ql-container.ql-snow {
+    @apply rounded-b-xl border-gray-200 text-th-base;
+    font-family: 'Sarabun', sans-serif;
+  }
+  .terms-editor .ql-editor {
+    @apply min-h-[320px];
+  }
+  .terms-editor .ql-editor.ql-blank::before {
+    @apply text-gray-400 not-italic;
+  }
+  .terms-editor .ql-editor hr {
+    @apply my-3 h-0 border-0 border-t border-gray-300;
   }
 }
 

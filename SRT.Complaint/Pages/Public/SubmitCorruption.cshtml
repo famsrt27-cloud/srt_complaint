@@ -61,8 +61,7 @@
                         </label>
                         <input asp-for="Input.ReporterName" type="text" autocomplete="name"
                                placeholder="ชื่อ นามสกุล (ไม่ต้องใส่คำนำหน้า)"
-                               class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm
-                                      focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 transition-colors" />
+                               class="form-input-compact border-amber-300 focus:border-amber-500" />
                         <span asp-validation-for="Input.ReporterName" class="text-red-600 text-xs mt-1 block"></span>
                     </div>
 
@@ -73,8 +72,7 @@
                         <input asp-for="Input.ReporterPhone" type="tel" inputmode="numeric" autocomplete="tel"
                                placeholder="081-234-5678"
                                data-mask="phone" maxlength="12"
-                               class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm
-                                      focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 transition-colors" />
+                               class="form-input-compact border-amber-300 focus:border-amber-500" />
                         <span asp-validation-for="Input.ReporterPhone" class="text-red-600 text-xs mt-1 block"></span>
                     </div>
 
@@ -85,8 +83,7 @@
                         <input asp-for="Input.ReporterEmail" type="email" autocomplete="email"
                                placeholder="example@email.com"
                                data-block="thai"
-                               class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm
-                                      focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 transition-colors" />
+                               class="form-input-compact border-amber-300 focus:border-amber-500" />
                         <span asp-validation-for="Input.ReporterEmail" class="text-red-600 text-xs mt-1 block"></span>
                     </div>
 
@@ -97,8 +94,7 @@
                         <input asp-for="Input.ReporterIdCard" type="text" inputmode="numeric"
                                placeholder="1-2345-67890-12-3"
                                data-mask="id-card" maxlength="17"
-                               class="w-full sm:w-64 border border-gray-300 rounded-lg px-3 py-2 text-sm
-                                      focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 transition-colors tracking-widest" />
+                               class="form-input-compact sm:w-64 border-amber-300 focus:border-amber-500 tracking-widest" />
                         <p class="text-xs text-gray-400 mt-1">ใช้ยืนยันตัวตน จะถูกเข้ารหัสและไม่แสดงในระบบ</p>
                         <span asp-validation-for="Input.ReporterIdCard" class="text-red-600 text-xs mt-1 block"></span>
                     </div>
@@ -123,8 +119,7 @@
                             ประเภทผู้ถูกกล่าวหา <span class="text-red-500" aria-hidden="true">*</span>
                         </label>
                         <select asp-for="Input.SubjectType"
-                                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm
-                                       focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 transition-colors">
+                                class="form-select-compact border-amber-300 focus:border-amber-500">
                             <option value="">— เลือกประเภท —</option>
                             <option value="Employee">พนักงาน รฟท.</option>
                             <option value="Department">หน่วยงาน / แผนก</option>
@@ -140,8 +135,7 @@
                         </label>
                         <input asp-for="Input.SubjectPersonName" type="text"
                                placeholder="ชื่อ นามสกุล / ตำแหน่ง"
-                               class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm
-                                      focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 transition-colors" />
+                               class="form-input-compact border-amber-300 focus:border-amber-500" />
                         <span asp-validation-for="Input.SubjectPersonName" class="text-red-600 text-xs mt-1 block"></span>
                     </div>
 
@@ -151,8 +145,7 @@
                         </label>
                         <input asp-for="Input.SubjectDepartment" type="text"
                                placeholder="เช่น สถานีกรุงเทพ, กองบำรุงรักษา, ฝ่ายการเดินรถ"
-                               class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm
-                                      focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 transition-colors" />
+                               class="form-input-compact border-amber-300 focus:border-amber-500" />
                         <span asp-validation-for="Input.SubjectDepartment" class="text-red-600 text-xs mt-1 block"></span>
                     </div>
 
@@ -178,8 +171,7 @@
                         <input asp-for="Input.IncidentDate" type="date"
                                max="@DateTime.Today.ToString("yyyy-MM-dd")"
                                data-datepicker
-                               class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm
-                                      focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 transition-colors" />
+                               class="form-input-compact border-amber-300 focus:border-amber-500" />
                         <span asp-validation-for="Input.IncidentDate" class="text-red-600 text-xs mt-1 block"></span>
                     </div>
 
@@ -192,8 +184,7 @@
                                   maxlength="4000"
                                   placeholder="อธิบายพฤติกรรมทุจริต เช่น เรียกรับเงิน ใช้อำนาจหน้าที่โดยมิชอบ ฉ้อโกงทรัพย์สิน ฯลฯ ระบุเวลา สถานที่ ผู้เกี่ยวข้อง และพยานหลักฐานที่มีอยู่ให้ชัดเจน"
                                   oninput="document.getElementById('desc-count').textContent = this.value.length"
-                                  class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm resize-none
-                                         focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 transition-colors"></textarea>
+                                  class="form-textarea-compact border-amber-300 focus:border-amber-500"></textarea>
                         <div class="flex justify-between mt-1">
                             <span asp-validation-for="Input.Description" class="text-red-600 text-xs block"></span>
                             <span class="text-xs text-gray-400 ml-auto"><span id="desc-count">0</span>/4,000</span>

@@ -1,4 +1,5 @@
 using SRT.Complaint.Models;
+using SRT.Complaint.Models.Corruption;
 
 namespace SRT.Complaint.Services;
 

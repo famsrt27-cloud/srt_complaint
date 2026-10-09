@@ -1,5 +1,4 @@
 #nullable enable
-using System.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using SRT.Complaint.Filters;
 using SRT.Complaint.Services;
@@ -11,16 +10,13 @@ namespace SRT.Complaint.Controllers.Api;
 [ServiceFilter(typeof(ApiKeyAuthFilter))]
 public class StatsController(
     IStatsService statsService,
-    IApiRequestLogService logService,
-    ILogger<StatsController> logger) : ApiBaseController(logService, logger)
+    ILogger<StatsController> logger) : ControllerBase
 {
     // ─── GET /api/stats/summary ───────────────────────────────────────────────
     [HttpGet("summary")]
     [RequireScope("stats:summary")]
     public async Task<IActionResult> GetStats(CancellationToken ct)
     {
-        int statusCode = 200;
-        var sw = Stopwatch.StartNew();
         try
         {
             var s = await statsService.GetSummaryAsync(ct);
@@ -42,14 +38,8 @@ public class StatsController(
         }
         catch (Exception ex)
         {
-            statusCode = 500;
             logger.LogError(ex, "Error getting stats summary");
             return StatusCode(500, new { error = "Internal server error" });
-        }
-        finally
-        {
-            sw.Stop();
-            await LogRequestAsync("GET", "/api/stats/summary", null, statusCode, (int)sw.ElapsedMilliseconds);
         }
     }
 
@@ -58,8 +48,6 @@ public class StatsController(
     [RequireScope("stats:detailed")]
     public async Task<IActionResult> GetDetailedStats(CancellationToken ct)
     {
-        int statusCode = 200;
-        var sw = Stopwatch.StartNew();
         try
         {
             var s = await statsService.GetDetailedAsync(ct);
@@ -74,14 +62,8 @@ public class StatsController(
         }
         catch (Exception ex)
         {
-            statusCode = 500;
             logger.LogError(ex, "Error getting detailed stats");
             return StatusCode(500, new { error = "Internal server error" });
-        }
-        finally
-        {
-            sw.Stop();
-            await LogRequestAsync("GET", "/api/stats/detailed", null, statusCode, (int)sw.ElapsedMilliseconds);
         }
     }
 }

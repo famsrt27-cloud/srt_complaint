@@ -1,5 +1,4 @@
 #nullable enable
-using System.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using SRT.Complaint.Filters;
 using SRT.Complaint.Services;
@@ -11,16 +10,13 @@ namespace SRT.Complaint.Controllers.Api;
 [ServiceFilter(typeof(ApiKeyAuthFilter))]
 public class CorruptionStatsController(
     ICorruptionStatsService corruptionStatsService,
-    IApiRequestLogService logService,
-    ILogger<CorruptionStatsController> logger) : ApiBaseController(logService, logger)
+    ILogger<CorruptionStatsController> logger) : ControllerBase
 {
     // ─── GET /api/stats/corruption ────────────────────────────────────────────
     [HttpGet]
     [RequireScope("corruption:stats")]
     public async Task<IActionResult> GetCorruptionStats(CancellationToken ct)
     {
-        int statusCode = 200;
-        var sw = Stopwatch.StartNew();
         try
         {
             var s = await corruptionStatsService.GetSummaryAsync(ct);
@@ -43,14 +39,8 @@ public class CorruptionStatsController(
         }
         catch (Exception ex)
         {
-            statusCode = 500;
             logger.LogError(ex, "Error getting corruption stats");
             return StatusCode(500, new { error = "Internal server error" });
-        }
-        finally
-        {
-            sw.Stop();
-            await LogRequestAsync("GET", "/api/stats/corruption", null, statusCode, (int)sw.ElapsedMilliseconds);
         }
     }
 }

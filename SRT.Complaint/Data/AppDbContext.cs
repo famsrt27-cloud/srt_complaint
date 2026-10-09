@@ -23,6 +23,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<ComplaintTerms> ComplaintTerms => Set<ComplaintTerms>();
     public DbSet<ContentBlock> ContentBlocks => Set<ContentBlock>();
     public DbSet<ExternalSyncLog> ExternalSyncLogs => Set<ExternalSyncLog>();
+    public DbSet<TraffySettings> TraffySettings => Set<TraffySettings>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -90,6 +91,12 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.FileName).HasMaxLength(500);
             e.Property(x => x.StoredPath).HasMaxLength(1000);
             e.Property(x => x.MimeType).HasMaxLength(100);
+            // ClientSetNull (not Cascade) — Complaint already cascades to ComplaintAttachment
+            // directly; also cascading via ComplaintNote would give SQL Server two cascade
+            // paths to the same table, which it rejects.
+            e.HasOne(x => x.Note).WithMany(n => n.Attachments)
+             .HasForeignKey(x => x.ComplaintNoteId)
+             .OnDelete(DeleteBehavior.ClientSetNull);
         });
 
         modelBuilder.Entity<ComplaintNote>(e =>
@@ -201,7 +208,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.SyncStatus).HasMaxLength(20);
             e.HasOne(x => x.TriggeredBy).WithMany()
              .HasForeignKey(x => x.TriggeredById)
-             .OnDelete(DeleteBehavior.Restrict);
+             .OnDelete(DeleteBehavior.ClientSetNull);
         });
 
         SeedData(modelBuilder);
@@ -298,6 +305,18 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         {
             e.ToTable("ComplaintTerms", "dbo");
             e.Property(x => x.Title).HasMaxLength(300);
+            e.HasOne(x => x.UpdatedBy)
+             .WithMany()
+             .HasForeignKey(x => x.UpdatedById)
+             .OnDelete(DeleteBehavior.ClientSetNull);
+        });
+
+        modelBuilder.Entity<TraffySettings>(e =>
+        {
+            e.ToTable("TraffySettings", "dbo");
+            e.Property(x => x.ApiUrl).HasMaxLength(300);
+            e.Property(x => x.Username).HasMaxLength(200);
+            e.Property(x => x.OrgId).HasMaxLength(200);
             e.HasOne(x => x.UpdatedBy)
              .WithMany()
              .HasForeignKey(x => x.UpdatedById)

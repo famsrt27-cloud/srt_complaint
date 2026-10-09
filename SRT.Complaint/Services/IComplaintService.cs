@@ -14,7 +14,8 @@ public interface IComplaintService
     Task ReopenAsync(int id, int actorId, CancellationToken ct = default);
     Task<IReadOnlyList<Models.Complaint>> GetQueueAsync(ComplaintQueueFilter filter, CancellationToken ct = default);
     Task<int> GetTotalCountAsync(ComplaintQueueFilter filter, CancellationToken ct = default);
-    Task AddNoteAsync(int id, int authorId, string noteType, string content, CancellationToken ct = default);
+    Task AddNoteAsync(int id, int authorId, string noteType, string content,
+        IReadOnlyList<IFormFile>? attachments = null, CancellationToken ct = default);
     Task<DashboardStats> GetDashboardStatsAsync(CancellationToken ct = default);
     Task<IReadOnlyList<WorkloadItem>> GetWorkloadAsync(CancellationToken ct = default);
     Task SubmitSatisfactionAsync(string referenceNumber, byte score, string? note, CancellationToken ct = default);
@@ -31,7 +32,9 @@ public record SubmitComplaintRequest(
     DateOnly? IncidentDate,
     string Description,
     IReadOnlyList<IFormFile> Attachments,
-    string Channel = "Web"
+    string Channel = "Web",
+    double? Latitude = null,
+    double? Longitude = null
 );
 
 public record ComplaintQueueFilter(

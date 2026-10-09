@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using SRT.Complaint.Data;
 using SRT.Complaint.Models;
+using SRT.Complaint.Models.Corruption;
 
 namespace SRT.Complaint.Services;
 
@@ -33,7 +34,7 @@ public class CorruptionService(
             Description = request.Description,
             Priority = "Normal",
             Status = "Pending",
-            SlaDeadline = slaService.CalculateDeadline("Normal", now),
+            SlaDeadline = await slaService.CalculateDeadlineAsync("Normal", now),
             CreatedAt = now,
             UpdatedAt = now
         };
@@ -239,15 +240,15 @@ public class CorruptionService(
     private async Task<string> GenerateReferenceNumberAsync(CancellationToken ct)
     {
         var thYear = DateTime.UtcNow.Year + 543;
-        var seq = await NextSequenceAsync("corruption.CorruptionSeq", ct);
+        var seq = await NextSequenceAsync(ct);
         return $"SRT-CORUPT-{thYear}-{seq:D4}";
     }
 
-    private async Task<long> NextSequenceAsync(string sequenceName, CancellationToken ct)
+    private async Task<long> NextSequenceAsync(CancellationToken ct)
     {
         var conn = db.Database.GetDbConnection();
         await using var cmd = conn.CreateCommand();
-        cmd.CommandText = $"SELECT NEXT VALUE FOR {sequenceName}";
+        cmd.CommandText = "SELECT NEXT VALUE FOR corruption.CorruptionSeq";
         if (conn.State != System.Data.ConnectionState.Open)
             await conn.OpenAsync(ct);
         return Convert.ToInt64(await cmd.ExecuteScalarAsync(ct));

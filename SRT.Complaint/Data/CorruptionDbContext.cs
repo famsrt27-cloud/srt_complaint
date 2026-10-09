@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using SRT.Complaint.Models;
+using SRT.Complaint.Models.Corruption;
 
 namespace SRT.Complaint.Data;
 

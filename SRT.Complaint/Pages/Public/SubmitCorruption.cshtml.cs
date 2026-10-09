@@ -52,7 +52,8 @@ public class SubmitCorruptionModel(
             .Where(f => f.Length > 0)
             .ToList() ?? [];
 
-        if (!ValidateFiles(attachments, out var fileError))
+        var (filesValid, fileError) = await ValidateFilesAsync(attachments);
+        if (!filesValid)
         {
             ModelState.AddModelError("Input.Attachments", fileError);
             return Page();
@@ -77,29 +78,24 @@ public class SubmitCorruptionModel(
         return RedirectToPage("/Public/CorruptionSubmitted");
     }
 
-    private static bool ValidateFiles(IList<IFormFile> files, out string error)
+    private static async Task<(bool Valid, string Error)> ValidateFilesAsync(IList<IFormFile> files)
     {
-        error = string.Empty;
         if (files.Count > MaxFileCount)
-        {
-            error = $"แนบไฟล์ได้ไม่เกิน {MaxFileCount} ไฟล์";
-            return false;
-        }
+            return (false, $"แนบไฟล์ได้ไม่เกิน {MaxFileCount} ไฟล์");
+
         foreach (var file in files)
         {
             if (file.Length > MaxFileSizeBytes)
-            {
-                error = $"ไฟล์ \"{file.FileName}\" มีขนาดเกิน 10 MB";
-                return false;
-            }
+                return (false, $"ไฟล์ \"{file.FileName}\" มีขนาดเกิน 10 MB");
+
             var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
             if (!AllowedExtensions.Contains(ext))
-            {
-                error = $"ไฟล์ \"{file.FileName}\" ไม่รองรับประเภทไฟล์นี้ (รองรับ: JPG, PNG, PDF, DOC, DOCX)";
-                return false;
-            }
+                return (false, $"ไฟล์ \"{file.FileName}\" ไม่รองรับประเภทไฟล์นี้ (รองรับ: JPG, PNG, PDF, DOC, DOCX)");
+
+            if (!await FileSignatureValidator.HasValidSignatureAsync(file, ext))
+                return (false, $"ไฟล์ \"{file.FileName}\" มีเนื้อหาไม่ตรงกับนามสกุลไฟล์");
         }
-        return true;
+        return (true, string.Empty);
     }
 }
 

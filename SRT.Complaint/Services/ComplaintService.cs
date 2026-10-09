@@ -33,10 +33,12 @@ public class ComplaintService(
             SubjectStation = request.SubjectStation,
             IncidentDate = request.IncidentDate,
             Description = request.Description,
+            Latitude = request.Latitude,
+            Longitude = request.Longitude,
             Channel = request.Channel,
             Priority = priority,
             Status = "Pending",
-            SlaDeadline = slaService.CalculateDeadline(priority, now),
+            SlaDeadline = await slaService.CalculateDeadlineAsync(priority, now),
             CreatedAt = now,
             UpdatedAt = now
         };
@@ -53,12 +55,19 @@ public class ComplaintService(
             ["TrackingUrl"] = $"https://www.railway.co.th/complaint/track/{refNum}"
         }, ct);
 
+        if (priority == "Critical")
+            await NotifyStaffOfCriticalAsync(refNum, ct);
+
         var createdPayload = new { referenceNumber = refNum, status = complaint.Status, priority = complaint.Priority, createdAt = complaint.CreatedAt };
+        var discordPayload = new NewComplaintDiscordPayload(refNum, category.Name, complaint.Priority, complaint.SubjectStation, complaint.CreatedAt);
         _ = Task.Run(async () =>
         {
             await using var scope = scopeFactory.CreateAsyncScope();
             var wh = scope.ServiceProvider.GetRequiredService<IWebhookService>();
             await wh.TriggerAsync("complaint.created", createdPayload);
+
+            var discord = scope.ServiceProvider.GetRequiredService<IDiscordNotifier>();
+            await discord.NotifyNewComplaintAsync(discordPayload);
         }, CancellationToken.None);
 
         return complaint;
@@ -69,7 +78,7 @@ public class ComplaintService(
             .Include(c => c.Category)
             .Include(c => c.AssignedTo)
             .Include(c => c.Attachments)
-            .Include(c => c.Notes)
+            .Include(c => c.Notes).ThenInclude(n => n.Attachments)
             .FirstOrDefaultAsync(c => c.ReferenceNumber == referenceNumber, ct);
 
     public async Task<Models.Complaint?> GetByIdAsync(int id, CancellationToken ct = default)
@@ -78,6 +87,7 @@ public class ComplaintService(
             .Include(c => c.AssignedTo)
             .Include(c => c.Attachments)
             .Include(c => c.Notes).ThenInclude(n => n.Author)
+            .Include(c => c.Notes).ThenInclude(n => n.Attachments)
             .Include(c => c.TransferLogs)
             .FirstOrDefaultAsync(c => c.Id == id, ct);
 
@@ -193,17 +203,23 @@ public class ComplaintService(
     public async Task<int> GetTotalCountAsync(ComplaintQueueFilter filter, CancellationToken ct = default)
         => await ApplyFilter(db.Complaints.AsQueryable(), filter).CountAsync(ct);
 
-    public async Task AddNoteAsync(int id, int authorId, string noteType, string content, CancellationToken ct = default)
+    public async Task AddNoteAsync(int id, int authorId, string noteType, string content,
+        IReadOnlyList<IFormFile>? attachments = null, CancellationToken ct = default)
     {
-        db.ComplaintNotes.Add(new ComplaintNote
+        var note = new ComplaintNote
         {
             ComplaintId = id,
             AuthorId = authorId,
             NoteType = noteType,
             Content = content,
             CreatedAt = DateTime.UtcNow
-        });
+        };
+        db.ComplaintNotes.Add(note);
         await db.SaveChangesAsync(ct);
+
+        if (attachments is { Count: > 0 })
+            await SaveAttachmentsAsync(id, attachments, ct, note.Id);
+
         await auditService.LogAsync("AddNote", authorId, null, "Complaint", id.ToString(), new { noteType }, null, ct);
     }
 
@@ -353,39 +369,67 @@ public class ComplaintService(
         return q;
     }
 
+    private async Task NotifyStaffOfCriticalAsync(string refNum, CancellationToken ct)
+    {
+        var staffEmails = await db.StaffUsers
+            .Where(u => u.IsActive && u.Role == "GeneralOfficer" && u.Email != null)
+            .Select(u => u.Email!)
+            .ToListAsync(ct);
+
+        foreach (var email in staffEmails)
+            await notificationService.SendAsync("CriticalReceived", null, email, new()
+            {
+                ["ReferenceNumber"] = refNum
+            }, ct);
+    }
+
     private async Task<string> GenerateReferenceNumberAsync(CancellationToken ct)
     {
         var thYear = DateTime.UtcNow.Year + 543;
-        var seq = await NextSequenceAsync("dbo.ComplaintSeq", ct);
+        var seq = await NextSequenceAsync(ct);
         return $"SRT-COMPL-{thYear}-{seq:D4}";
     }
 
-    private async Task<long> NextSequenceAsync(string sequenceName, CancellationToken ct)
+    private async Task<long> NextSequenceAsync(CancellationToken ct)
     {
         var conn = db.Database.GetDbConnection();
         await using var cmd = conn.CreateCommand();
-        cmd.CommandText = $"SELECT NEXT VALUE FOR {sequenceName}";
+        cmd.CommandText = "SELECT NEXT VALUE FOR dbo.ComplaintSeq";
         if (conn.State != System.Data.ConnectionState.Open)
             await conn.OpenAsync(ct);
         return Convert.ToInt64(await cmd.ExecuteScalarAsync(ct));
     }
 
-    private async Task SaveAttachmentsAsync(int complaintId, IReadOnlyList<IFormFile> files, CancellationToken ct)
+    // Files land in {StoragePath}/{ReferenceNumber}/{guid}.ext (one folder per complaint)
+    // instead of one flat folder. StoredPath carries that relative path, so older rows
+    // saved before this change — which have no folder segment — keep resolving correctly
+    // wherever they're read (Path.Combine(storagePath, StoredPath) works for both shapes).
+    private async Task SaveAttachmentsAsync(int complaintId, IReadOnlyList<IFormFile> files, CancellationToken ct, int? noteId = null)
     {
+        if (files.Count == 0) return;
+
+        var refNumber = await db.Complaints
+            .Where(c => c.Id == complaintId)
+            .Select(c => c.ReferenceNumber)
+            .FirstAsync(ct);
+
         var storagePath = config["FileUpload:StoragePath"] ?? Path.GetTempPath();
-        Directory.CreateDirectory(storagePath);
+        var complaintDir = Path.Combine(storagePath, refNumber);
+        Directory.CreateDirectory(complaintDir);
+
         foreach (var file in files)
         {
             if (file.Length == 0) continue;
             var storedName = $"{Guid.NewGuid()}{Path.GetExtension(file.FileName)}";
-            var fullPath = Path.Combine(storagePath, storedName);
+            var fullPath = Path.Combine(complaintDir, storedName);
             await using var fs = File.Create(fullPath);
             await file.CopyToAsync(fs, ct);
             db.ComplaintAttachments.Add(new ComplaintAttachment
             {
                 ComplaintId = complaintId,
+                ComplaintNoteId = noteId,
                 FileName = file.FileName,
-                StoredPath = fullPath,
+                StoredPath = Path.Combine(refNumber, storedName),
                 FileSize = file.Length,
                 MimeType = file.ContentType,
                 UploadedAt = DateTime.UtcNow

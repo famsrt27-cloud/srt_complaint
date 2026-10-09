@@ -142,14 +142,18 @@ public class WebhookService(
         return Convert.ToHexString(HMACSHA256.HashData(keyBytes, payloadBytes)).ToLowerInvariant();
     }
 
-    private static bool WebhookMatchesEvent(Webhook w, string eventType)
+    private bool WebhookMatchesEvent(Webhook w, string eventType)
     {
         try
         {
             var events = JsonSerializer.Deserialize<List<string>>(w.Events) ?? [];
             return events.Contains(eventType, StringComparer.OrdinalIgnoreCase);
         }
-        catch { return false; }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Webhook {WebhookId} has malformed Events JSON: {Events}", w.Id, w.Events);
+            return false;
+        }
     }
 
     private static DateTime? NextRetryTime(byte attempt) => attempt switch
