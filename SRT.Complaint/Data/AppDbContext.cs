@@ -15,12 +15,18 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<ComplaintTransferLog> ComplaintTransferLogs => Set<ComplaintTransferLog>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<NotificationTemplate> NotificationTemplates => Set<NotificationTemplate>();
+    public DbSet<Partner> Partners => Set<Partner>();
     public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
     public DbSet<ApiKeyScope> ApiKeyScopes => Set<ApiKeyScope>();
     public DbSet<ApiRequestLog> ApiRequestLogs => Set<ApiRequestLog>();
+    public DbSet<ApiIdempotencyRecord> ApiIdempotencyRecords => Set<ApiIdempotencyRecord>();
     public DbSet<Webhook> Webhooks => Set<Webhook>();
     public DbSet<WebhookDeliveryLog> WebhookDeliveryLogs => Set<WebhookDeliveryLog>();
+    public DbSet<WebhookOutboxMessage> WebhookOutboxMessages => Set<WebhookOutboxMessage>();
+    public DbSet<EdocDocumentLink> EdocDocumentLinks => Set<EdocDocumentLink>();
+    public DbSet<EdocAttachmentDelivery> EdocAttachmentDeliveries => Set<EdocAttachmentDelivery>();
     public DbSet<ComplaintTerms> ComplaintTerms => Set<ComplaintTerms>();
+    public DbSet<PdfSignerSettings> PdfSignerSettings => Set<PdfSignerSettings>();
     public DbSet<ContentBlock> ContentBlocks => Set<ContentBlock>();
     public DbSet<ExternalSyncLog> ExternalSyncLogs => Set<ExternalSyncLog>();
     public DbSet<TraffySettings> TraffySettings => Set<TraffySettings>();
@@ -76,6 +82,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.ReporterPhone).HasMaxLength(20);
             e.Property(x => x.ReporterEmail).HasMaxLength(200);
             e.Property(x => x.ReporterIdCard).HasMaxLength(20);
+            e.Property(x => x.ReporterPrivacyChoice).HasMaxLength(20);
+            e.Property(x => x.SubmissionPurpose).HasMaxLength(40);
+            e.Property(x => x.ResponsibleDepartment).HasMaxLength(200);
             e.Property(x => x.SubjectStation).HasMaxLength(200);
             e.Property(x => x.Channel).HasMaxLength(20).HasDefaultValue("Web");
             e.Property(x => x.Priority).HasMaxLength(20);
@@ -135,14 +144,31 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.EmailSubject).HasMaxLength(300);
         });
 
+        modelBuilder.Entity<Partner>(e =>
+        {
+            e.ToTable("Partners", "dbo");
+            e.HasIndex(x => x.Code).IsUnique();
+            e.Property(x => x.Code).HasMaxLength(50);
+            e.Property(x => x.Name).HasMaxLength(200);
+            e.Property(x => x.ContactName).HasMaxLength(200);
+            e.Property(x => x.ContactEmail).HasMaxLength(200);
+            e.Property(x => x.ContactPhone).HasMaxLength(50);
+        });
+
         modelBuilder.Entity<ApiKey>(e =>
         {
             e.ToTable("ApiKeys", "dbo");
             e.Property(x => x.Name).HasMaxLength(200);
             e.Property(x => x.KeyType).HasMaxLength(20);
-            e.Property(x => x.KeyPrefix).HasMaxLength(20);
+            e.Property(x => x.Environment).HasMaxLength(20);
+            e.Property(x => x.DataAccessMode).HasMaxLength(20);
+            e.Property(x => x.Purpose).HasMaxLength(500);
+            e.Property(x => x.KeyPrefix).HasMaxLength(32);
             e.Property(x => x.KeyHash).HasMaxLength(512);
             e.Property(x => x.RevokedReason).HasMaxLength(500);
+            e.HasIndex(x => x.KeyHash).IsUnique();
+            e.HasIndex(x => new { x.PartnerId, x.Environment });
+            e.HasOne(x => x.Partner).WithMany(x => x.ApiKeys).HasForeignKey(x => x.PartnerId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(x => x.CreatedBy).WithMany().HasForeignKey(x => x.CreatedById).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(x => x.RevokedBy).WithMany().HasForeignKey(x => x.RevokedById).OnDelete(DeleteBehavior.SetNull);
         });
@@ -165,6 +191,17 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.IpAddress).HasMaxLength(50);
         });
 
+        modelBuilder.Entity<ApiIdempotencyRecord>(e =>
+        {
+            e.ToTable("ApiIdempotencyRecords", "dbo");
+            e.HasIndex(x => new { x.ApiKeyId, x.IdempotencyKey }).IsUnique();
+            e.HasIndex(x => x.ExpiresAt);
+            e.Property(x => x.IdempotencyKey).HasMaxLength(128);
+            e.Property(x => x.RequestHash).HasMaxLength(64);
+            e.Property(x => x.State).HasMaxLength(20);
+            e.HasOne(x => x.ApiKey).WithMany(x => x.IdempotencyRecords).HasForeignKey(x => x.ApiKeyId).OnDelete(DeleteBehavior.Cascade);
+        });
+
         modelBuilder.Entity<Webhook>(e =>
         {
             e.ToTable("Webhooks", "dbo");
@@ -177,6 +214,50 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         {
             e.ToTable("WebhookDeliveryLogs", "dbo");
             e.Property(x => x.EventType).HasMaxLength(100);
+            e.HasIndex(x => x.DeliveryId).IsUnique();
+            e.HasIndex(x => new { x.WebhookId, x.OutboxMessageId }).IsUnique().HasFilter("[OutboxMessageId] IS NOT NULL");
+            e.HasOne(x => x.OutboxMessage).WithMany(x => x.DeliveryLogs).HasForeignKey(x => x.OutboxMessageId).OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<WebhookOutboxMessage>(e =>
+        {
+            e.ToTable("WebhookOutboxMessages", "dbo");
+            e.HasIndex(x => x.EventId).IsUnique();
+            e.HasIndex(x => new { x.ProcessedAt, x.NextAttemptAt });
+            e.Property(x => x.EventType).HasMaxLength(100);
+            e.Property(x => x.LastError).HasMaxLength(2000);
+            e.HasOne(x => x.Partner).WithMany().HasForeignKey(x => x.PartnerId).OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<EdocDocumentLink>(e =>
+        {
+            e.ToTable("EdocDocumentLinks", "dbo");
+            e.HasIndex(x => x.ComplaintId).IsUnique();
+            e.HasIndex(x => x.WID).IsUnique();
+            e.HasIndex(x => new { x.SyncStatus, x.NextTrackingAt });
+            e.Property(x => x.WID).HasMaxLength(100);
+            e.Property(x => x.BasketId).HasMaxLength(13);
+            e.Property(x => x.BasketName).HasMaxLength(200);
+            e.Property(x => x.RegisterNumber).HasMaxLength(20);
+            e.Property(x => x.RemoteDocumentDate).HasMaxLength(50);
+            e.Property(x => x.SyncStatus).HasMaxLength(40);
+            e.Property(x => x.RemoteStatusCode).HasMaxLength(20);
+            e.Property(x => x.RemoteStatusDescription).HasMaxLength(2000);
+            e.Property(x => x.LastError).HasMaxLength(2000);
+            e.HasOne(x => x.Complaint).WithOne().HasForeignKey<EdocDocumentLink>(x => x.ComplaintId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.CreatedBy).WithMany().HasForeignKey(x => x.CreatedById).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<EdocAttachmentDelivery>(e =>
+        {
+            e.ToTable("EdocAttachmentDeliveries", "dbo");
+            e.HasIndex(x => new { x.EdocDocumentLinkId, x.ComplaintAttachmentId }).IsUnique();
+            e.Property(x => x.Status).HasMaxLength(30);
+            e.Property(x => x.LastError).HasMaxLength(2000);
+            e.HasOne(x => x.EdocDocumentLink).WithMany(x => x.AttachmentDeliveries)
+                .HasForeignKey(x => x.EdocDocumentLinkId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.ComplaintAttachment).WithMany()
+                .HasForeignKey(x => x.ComplaintAttachmentId).OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<ContentBlock>(e =>
@@ -192,6 +273,19 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
              .OnDelete(DeleteBehavior.SetNull);
         });
 
+        modelBuilder.Entity<PdfSignerSettings>(e =>
+        {
+            e.ToTable("PdfSignerSettings", "dbo");
+            e.Property(x => x.FullName).HasMaxLength(200);
+            e.Property(x => x.PositionTitle).HasMaxLength(200);
+            e.Property(x => x.ActingTitle).HasMaxLength(300);
+            e.Property(x => x.SignatureStoredPath).HasMaxLength(1000);
+            e.HasOne(x => x.UpdatedBy)
+             .WithMany()
+             .HasForeignKey(x => x.UpdatedById)
+             .OnDelete(DeleteBehavior.ClientSetNull);
+        });
+
         modelBuilder.Entity<Models.Complaint>(e =>
         {
             e.Property(x => x.ExternalSystem).HasMaxLength(50);
@@ -199,6 +293,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.HasIndex(x => new { x.ExternalSystem, x.ExternalId })
              .IsUnique()
              .HasFilter("[ExternalId] IS NOT NULL");
+            e.HasIndex(x => x.SourcePartnerId);
+            e.HasOne(x => x.SourcePartner).WithMany(x => x.Complaints).HasForeignKey(x => x.SourcePartnerId).OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<ExternalSyncLog>(e =>
@@ -229,6 +325,15 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         );
 
         var seedDate = new DateTime(2568 - 543, 6, 1, 0, 0, 0, DateTimeKind.Utc);
+        modelBuilder.Entity<PdfSignerSettings>().HasData(
+            new PdfSignerSettings
+            {
+                Id = 1,
+                FullName = "นางสาวชัชชนก แสงมุข",
+                PositionTitle = "หัวหน้ากองประชาสัมพันธ์",
+                ActingTitle = "ปฏิบัติการแทน ผู้อำนวยการศูนย์ประชาสัมพันธ์",
+                UpdatedAt = new DateTime(2026, 9, 21, 0, 0, 0, DateTimeKind.Utc)
+            });
         modelBuilder.Entity<SlaConfig>().HasData(
             new SlaConfig { Id = 1, Priority = "Critical", LabelTh = "เร่งด่วนมาก (ความปลอดภัย)", ResolutionHours = 24, AutoAssignAfterHours = 1, UpdatedAt = seedDate },
             new SlaConfig { Id = 2, Priority = "Urgent", LabelTh = "เร่งด่วน", ResolutionHours = 72, AutoAssignAfterHours = 4, UpdatedAt = seedDate },

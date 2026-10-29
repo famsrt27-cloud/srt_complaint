@@ -1,5 +1,4 @@
 #nullable enable
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net;
 using Microsoft.AspNetCore.Mvc;
@@ -14,23 +13,23 @@ public class ApiKeyAuthFilter(
     IApiKeyService apiKeyService,
     IApiRequestLogService logService,
     IMemoryCache cache,
-    ILogger<ApiKeyAuthFilter> logger) : IAsyncActionFilter
+    ILogger<ApiKeyAuthFilter> logger) : IAsyncActionFilter, IOrderedFilter
 {
-    private static readonly ConcurrentDictionary<string, SemaphoreSlim> _semaphores = new();
+    public int Order => -3000;
 
     public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
     {
         if (!context.HttpContext.Request.Headers.TryGetValue("X-API-Key", out var rawKey) ||
-            string.IsNullOrWhiteSpace(rawKey))
+            rawKey.Count != 1 || string.IsNullOrWhiteSpace(rawKey) || rawKey.ToString().Length > 128)
         {
-            context.Result = new UnauthorizedObjectResult(new { error = "X-API-Key header required" });
+            context.Result = new UnauthorizedObjectResult(ApiError(context, "authentication_required", "A valid X-API-Key header is required"));
             return;
         }
 
         var apiKey = await apiKeyService.ValidateAsync(rawKey!);
         if (apiKey == null)
         {
-            context.Result = new UnauthorizedObjectResult(new { error = "Invalid or expired API key" });
+            context.Result = new UnauthorizedObjectResult(ApiError(context, "invalid_api_key", "Invalid or expired API key"));
             return;
         }
 
@@ -42,7 +41,7 @@ public class ApiKeyAuthFilter(
                 .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             if (!allowed.Any(ip => MatchesIp(clientIp, ip)))
             {
-                context.Result = new ObjectResult(new { error = "IP address not in whitelist" }) { StatusCode = 403 };
+                context.Result = new ObjectResult(ApiError(context, "ip_not_allowed", "IP address not in whitelist")) { StatusCode = 403 };
                 await LogRequestAsync(context, apiKey, 403, 0);
                 return;
             }
@@ -50,29 +49,30 @@ public class ApiKeyAuthFilter(
 
         // Rate limit — fixed window per minute (atomic increment)
         var cacheKey = $"ratelimit:{apiKey.Id}:{DateTime.UtcNow:yyyyMMddHHmm}";
-        var sem = _semaphores.GetOrAdd(cacheKey, _ => new SemaphoreSlim(1, 1));
-        await sem.WaitAsync(context.HttpContext.RequestAborted);
+        var bucket = cache.GetOrCreate(cacheKey, entry =>
+        {
+            entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(2);
+            return new RateLimitBucket();
+        })!;
+        await bucket.Gate.WaitAsync(context.HttpContext.RequestAborted);
         try
         {
-            var count = cache.GetOrCreate(cacheKey, e =>
+            if (bucket.Count >= apiKey.RateLimitPerMin)
             {
-                e.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(2);
-                return 0;
-            });
-            if (count >= apiKey.RateLimitPerMin)
-            {
-                context.Result = new ObjectResult(new { error = "Rate limit exceeded", retryAfter = "60s" }) { StatusCode = 429 };
+                context.HttpContext.Response.Headers.RetryAfter = "60";
+                context.Result = new ObjectResult(ApiError(context, "rate_limit_exceeded", "Rate limit exceeded")) { StatusCode = 429 };
                 await LogRequestAsync(context, apiKey, 429, 0);
                 return;
             }
-            cache.Set(cacheKey, count + 1, TimeSpan.FromMinutes(2));
+            bucket.Count++;
         }
         finally
         {
-            sem.Release();
+            bucket.Gate.Release();
         }
 
         context.HttpContext.Items["ApiKey"] = apiKey;
+        context.HttpContext.Response.Headers["X-RateLimit-Limit"] = apiKey.RateLimitPerMin.ToString();
 
         var sw = Stopwatch.StartNew();
         var executed = await next();
@@ -95,7 +95,7 @@ public class ApiKeyAuthFilter(
         {
             var request = context.HttpContext.Request;
             await logService.LogAsync(apiKey.Id, request.Method, request.Path.Value ?? "",
-                request.QueryString.HasValue ? request.QueryString.Value : null,
+                null,
                 context.HttpContext.Connection.RemoteIpAddress?.ToString(), statusCode, durationMs);
         }
         catch (Exception ex)
@@ -107,18 +107,21 @@ public class ApiKeyAuthFilter(
     private static bool MatchesIp(string clientIp, string allowedEntry)
     {
         if (!IPAddress.TryParse(clientIp, out var clientAddr)) return false;
+        if (clientAddr.IsIPv4MappedToIPv6) clientAddr = clientAddr.MapToIPv4();
 
         if (!allowedEntry.Contains('/'))
-            return clientIp == allowedEntry;
+            return IPAddress.TryParse(allowedEntry, out var allowedAddress) && clientAddr.Equals(allowedAddress.IsIPv4MappedToIPv6 ? allowedAddress.MapToIPv4() : allowedAddress);
 
         var parts = allowedEntry.Split('/');
         if (parts.Length != 2) return false;
         if (!IPAddress.TryParse(parts[0], out var networkAddr)) return false;
+        if (networkAddr.IsIPv4MappedToIPv6) networkAddr = networkAddr.MapToIPv4();
         if (!int.TryParse(parts[1], out var prefixLen)) return false;
 
         var clientBytes  = clientAddr.GetAddressBytes();
         var networkBytes = networkAddr.GetAddressBytes();
         if (clientBytes.Length != networkBytes.Length) return false;
+        if (prefixLen < 0 || prefixLen > clientBytes.Length * 8) return false;
 
         var fullBytes = prefixLen / 8;
         var remBits   = prefixLen % 8;
@@ -132,5 +135,21 @@ public class ApiKeyAuthFilter(
             if ((clientBytes[fullBytes] & mask) != (networkBytes[fullBytes] & mask)) return false;
         }
         return true;
+    }
+
+    private static object ApiError(ActionExecutingContext context, string code, string message) => new
+    {
+        error = new
+        {
+            code,
+            message,
+            traceId = context.HttpContext.TraceIdentifier
+        }
+    };
+
+    private sealed class RateLimitBucket
+    {
+        public SemaphoreSlim Gate { get; } = new(1, 1);
+        public int Count { get; set; }
     }
 }

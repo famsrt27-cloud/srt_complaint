@@ -5,6 +5,8 @@ public class WebhookDeliveryLog
 {
     public long Id { get; set; }
     public int WebhookId { get; set; }
+    public long? OutboxMessageId { get; set; }
+    public Guid DeliveryId { get; set; } = Guid.NewGuid();
     public string EventType { get; set; } = string.Empty;
     public string Payload { get; set; } = string.Empty;
     public byte AttemptCount { get; set; } = 1;
@@ -16,4 +18,5 @@ public class WebhookDeliveryLog
     public DateTime? DeliveredAt { get; set; }
 
     public Webhook Webhook { get; set; } = null!;
+    public WebhookOutboxMessage? OutboxMessage { get; set; }
 }

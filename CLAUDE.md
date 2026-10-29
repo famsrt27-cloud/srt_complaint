@@ -77,8 +77,8 @@ SRT.Complaint/
 ## Architecture Rules
 
 - **Service Layer Pattern:** Business logic อยู่ใน `Services/` ไม่ใช่ใน PageModel
-- **Repository Pattern สำหรับ Dapper queries:** Query ที่ซับซ้อนแยกไปที่ Repository
-- **Separation of Concerns:** เรื่องทั่วไปกับเรื่องทุจริตไม่ share Service — แยกสมบูรณ์
+- **Data access:** ใช้ EF Core ทั้งหมด (ไม่มี Dapper ในโปรเจกต์นี้) — query ที่ซับซ้อนอยู่ใน Service layer ไม่ใช่ PageModel
+- **Separation of Concerns:** เรื่องทั่วไปกับเรื่องทุจริตไม่ share Service — แยกสมบูรณ์ (cross-context lookup เช่นชื่อเจ้าหน้าที่ ให้ผ่าน `IStaffDirectoryService` ไม่ inject `AppDbContext` ตรงเข้า Corruption PageModel)
 
 ## Testing Strategy
 
@@ -257,11 +257,33 @@ GET    /api/complaints/{ref}/edoc-payload (Scope: complaints:edoc)
 1. รัน migration: `dotnet ef database update --project SRT.Complaint --context AppDbContext`
 2. User เก่าที่สร้างก่อน migration นี้จะไม่มี `TempPasswordEncrypted` → ปุ่มจะไม่แสดง ต้องกด **"รีเซ็ต PW"** หนึ่งครั้งเพื่อให้ระบบ encrypt และเก็บรหัสผ่านใหม่
 
-**Production — Encryption Key:**
-- `Encryption:Key` ใน `appsettings.json` ต้องเป็น Base64 ของ random 32 bytes (AES-256)
-- Dev key ที่อยู่ใน `appsettings.json` ใช้ได้เฉพาะ local เท่านั้น
-- Production: สร้าง key ใหม่ด้วย `[Convert]::ToBase64String((1..32 | % { [byte](Get-Random -Max 256) }))` แล้วเก็บเป็น Environment Variable `Encryption__Key` ใน IIS — ห้าม commit key จริงลง Git
+**Encryption Key (อัปเดต 2026-06-25 — ย้ายออกจาก appsettings.json):**
+- `Encryption:Key` **ไม่อยู่ใน `appsettings.json` แล้ว** (เคยมี dev key คอมมิตอยู่ในนั้น ถูกย้ายออกเพราะเป็น secret ที่ไม่ควรอยู่ใน git — ค่าเดิมยังหลงเหลือใน git history เก่า ไม่ได้ scrub)
+- **Local dev:** ใช้ `dotnet user-secrets set "Encryption:Key" "<base64-32-bytes>"` (ทำครั้งเดียวต่อเครื่อง) — ค่าจะถูกเก็บนอก repo ที่ `%APPDATA%\Microsoft\UserSecrets\<UserSecretsId>\secrets.json` และ ASP.NET Core โหลดให้อัตโนมัติเมื่อ `ASPNETCORE_ENVIRONMENT=Development`
+- **Clone repo ใหม่ / เครื่องใหม่:** ต้องรัน `dotnet user-secrets set "Encryption:Key" "..."` เองก่อน ไม่งั้น decrypt `TempPasswordEncrypted` / corruption reporter data ที่เข้ารหัสด้วย key เดิมจะไม่ได้ (ขอ key จากทีมที่ทำงานอยู่ก่อนแล้ว)
+- **Production:** สร้าง key ใหม่ด้วย `[Convert]::ToBase64String((1..32 | % { [byte](Get-Random -Max 256) }))` แล้วเก็บเป็น Environment Variable `Encryption__Key` ใน IIS — ห้าม commit key จริงลง Git
 - Key นี้ใช้ encrypt ทั้ง `TempPasswordEncrypted` (StaffUsers) และข้อมูลผู้แจ้งทุจริต (CorruptionReports) — ถ้าเปลี่ยน key จะ decrypt ข้อมูลเก่าไม่ได้
+
+### ยกเลิก Traffy Fondue Integration (อัปเดต 2026-10-27)
+
+- ถอด Traffy webhook endpoints, adapter, settings service และหน้าตั้งค่าออกแล้ว
+- หลัง deploy ไม่ต้องกำหนด Traffy credentials หรือ Webhook Secret อีก
+- ควรแจ้งผู้ดูแล Traffy/NECTEC ให้ยกเลิก webhook URLs เดิม หากเคยลงทะเบียนไว้ เพื่อลด request ที่จะได้รับ `404 Not Found`
+- ยังไม่มี database migration สำหรับลบตาราง `dbo.TraffySettings`; ตารางถูกเก็บไว้แบบ inactive เพื่อป้องกันการลบข้อมูลโดยไม่ตั้งใจ
+- หากต้องการลบตารางดังกล่าวในอนาคต ต้องสร้างและตรวจ destructive migration แล้วรอการยืนยันก่อน apply ตามขั้นตอนของโปรเจกต์
+
+### Update 2 — ระบบรับเรื่องร้องเรียน (เพิ่ม 2026-10-29)
+
+**ฟีเจอร์:** สีเมนูหน้าหลักแยกตามประเภท, ไฟล์แนบเลือกสะสม/พรีวิวได้, วัตถุประสงค์การแจ้งเรื่อง, ใบรับเรื่องพร้อมคัดลอกรหัส, คิวเก่าไปใหม่, ค้นหาหลายฟิลด์, ส่งออก Excel/PDF/Word, แก้ประเภท/ฝ่ายรับผิดชอบ และปิดงานขั้นตอนเดียวโดยเลือกประโยคขึ้นต้นแล้วกรอกรายละเอียดสรุปผล
+
+**สิ่งที่ต้องทำหลัง deploy:**
+1. ตรวจ migration `20261029093150_AddUpdate2ComplaintFeatures` แล้วรัน `dotnet ef database update --project SRT.Complaint --context AppDbContext`
+2. ตรวจว่า IIS ใช้ `web.config` ที่กำหนด `requestLimits maxAllowedContentLength="57671680"` เพื่อรองรับคำขอ 55 MB
+3. ตรวจสิทธิ์เขียนของโฟลเดอร์ `FileUpload__StoragePath` และพื้นที่ว่าง เพราะหนึ่งคำร้องแนบไฟล์รวมได้สูงสุด 50 MB
+4. ทดสอบดาวน์โหลดรายงานภาษาไทยทั้ง Excel, PDF และ Word หลัง publish จริง
+5. ทดสอบงานสถานะ `InProgress`: เลือกประโยคขึ้นต้น กรอกรายละเอียด ตรวจตัวอย่างข้อความ แล้วกด “บันทึกสรุปผลและปิดงาน”; ระบบต้องบันทึกข้อความตอบกลับและเปลี่ยนเป็น `Closed` โดยตรง
+
+**หมายเหตุข้อมูลเดิม:** รายการที่เคยอยู่สถานะ `Resolved` จะถูกนับเป็นงานที่ยังไม่ปิดและยังแสดงฟอร์มสรุปผล เพื่อให้เจ้าหน้าที่ปิดเป็น `Closed` ได้โดยไม่ต้องแก้ข้อมูลด้วย SQL
 
 ## Session Continuity
 

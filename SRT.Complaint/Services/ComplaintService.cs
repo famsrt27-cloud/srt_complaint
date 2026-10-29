@@ -9,6 +9,7 @@ public class ComplaintService(
     ISlaService slaService,
     INotificationService notificationService,
     IAuditService auditService,
+    IWebhookService webhookService,
     IServiceScopeFactory scopeFactory,
     IConfiguration config) : IComplaintService
 {
@@ -28,14 +29,24 @@ public class ComplaintService(
             ReporterPhone = request.ReporterPhone,
             ReporterEmail = request.ReporterEmail,
             ReporterIdCard = request.ReporterIdCard,
+            ReporterPrivacyChoice = ReporterPrivacyChoices.IsValid(request.ReporterPrivacyChoice)
+                ? request.ReporterPrivacyChoice
+                : null,
+            SubmissionPurpose = ComplaintSubmissionPurposes.IsValid(request.SubmissionPurpose)
+                ? request.SubmissionPurpose
+                : null,
             CategoryId = request.CategoryId,
             SubCategoryId = request.SubCategoryId,
+            ResponsibleDepartment = category.DepartmentName,
             SubjectStation = request.SubjectStation,
             IncidentDate = request.IncidentDate,
             Description = request.Description,
             Latitude = request.Latitude,
             Longitude = request.Longitude,
             Channel = request.Channel,
+            SourcePartnerId = request.SourcePartnerId,
+            ExternalSystem = request.ExternalSystem,
+            ExternalId = request.ExternalId,
             Priority = priority,
             Status = "Pending",
             SlaDeadline = await slaService.CalculateDeadlineAsync(priority, now),
@@ -44,7 +55,8 @@ public class ComplaintService(
         };
 
         db.Complaints.Add(complaint);
-        await db.SaveChangesAsync(ct);
+        var createdPayload = new { referenceNumber = refNum, externalReference = complaint.ExternalId, status = complaint.Status, priority = complaint.Priority, createdAt = complaint.CreatedAt };
+        await webhookService.QueueAsync("complaint.created", createdPayload, complaint.SourcePartnerId, ct);
 
         await SaveAttachmentsAsync(complaint.Id, request.Attachments, ct);
         await auditService.LogAsync("ComplaintSubmitted", null, null, "Complaint", complaint.Id.ToString(), new { refNum }, null, ct);
@@ -58,14 +70,10 @@ public class ComplaintService(
         if (priority == "Critical")
             await NotifyStaffOfCriticalAsync(refNum, ct);
 
-        var createdPayload = new { referenceNumber = refNum, status = complaint.Status, priority = complaint.Priority, createdAt = complaint.CreatedAt };
         var discordPayload = new NewComplaintDiscordPayload(refNum, category.Name, complaint.Priority, complaint.SubjectStation, complaint.CreatedAt);
         _ = Task.Run(async () =>
         {
             await using var scope = scopeFactory.CreateAsyncScope();
-            var wh = scope.ServiceProvider.GetRequiredService<IWebhookService>();
-            await wh.TriggerAsync("complaint.created", createdPayload);
-
             var discord = scope.ServiceProvider.GetRequiredService<IDiscordNotifier>();
             await discord.NotifyNewComplaintAsync(discordPayload);
         }, CancellationToken.None);
@@ -76,6 +84,7 @@ public class ComplaintService(
     public async Task<Models.Complaint?> GetByReferenceAsync(string referenceNumber, CancellationToken ct = default)
         => await db.Complaints
             .Include(c => c.Category)
+            .Include(c => c.SubCategory)
             .Include(c => c.AssignedTo)
             .Include(c => c.Attachments)
             .Include(c => c.Notes).ThenInclude(n => n.Attachments)
@@ -84,6 +93,7 @@ public class ComplaintService(
     public async Task<Models.Complaint?> GetByIdAsync(int id, CancellationToken ct = default)
         => await db.Complaints
             .Include(c => c.Category)
+            .Include(c => c.SubCategory)
             .Include(c => c.AssignedTo)
             .Include(c => c.Attachments)
             .Include(c => c.Notes).ThenInclude(n => n.Author)
@@ -98,7 +108,7 @@ public class ComplaintService(
         var oldStatus = complaint.Status;
         complaint.Status = newStatus;
         complaint.UpdatedAt = DateTime.UtcNow;
-        if (newStatus is "Closed" or "Resolved") complaint.ClosedAt = DateTime.UtcNow;
+        if (newStatus == "Closed") complaint.ClosedAt = DateTime.UtcNow;
 
         db.ComplaintNotes.Add(new ComplaintNote
         {
@@ -109,6 +119,9 @@ public class ComplaintService(
             db.ComplaintNotes.Add(new ComplaintNote { ComplaintId = id, AuthorId = actorId, NoteType = "PublicReply", Content = note, CreatedAt = DateTime.UtcNow });
 
         await db.SaveChangesAsync(ct);
+        var webhookEvent = newStatus == "Closed" ? "complaint.closed" : "complaint.status_changed";
+        var statusPayload = new { referenceNumber = complaint.ReferenceNumber, externalReference = complaint.ExternalId, oldStatus, newStatus, updatedAt = complaint.UpdatedAt };
+        await webhookService.QueueAsync(webhookEvent, statusPayload, complaint.SourcePartnerId, ct);
         await auditService.LogAsync("UpdateStatus", actorId, null, "Complaint", id.ToString(), new { oldStatus, newStatus }, null, ct);
 
         await notificationService.SendAsync("StatusChanged", complaint.ReporterPhone, complaint.ReporterEmail, new()
@@ -117,14 +130,6 @@ public class ComplaintService(
             ["Status"] = newStatus
         }, ct);
 
-        var webhookEvent = newStatus is "Closed" or "Resolved" ? "complaint.closed" : "complaint.status_changed";
-        var statusPayload = new { referenceNumber = complaint.ReferenceNumber, oldStatus, newStatus, updatedAt = complaint.UpdatedAt };
-        _ = Task.Run(async () =>
-        {
-            await using var scope = scopeFactory.CreateAsyncScope();
-            var wh = scope.ServiceProvider.GetRequiredService<IWebhookService>();
-            await wh.TriggerAsync(webhookEvent, statusPayload);
-        }, CancellationToken.None);
     }
 
     public async Task ClaimAsync(int id, int staffId, CancellationToken ct = default)
@@ -167,8 +172,66 @@ public class ComplaintService(
         await auditService.LogAsync("TransferCase", actorId, null, "Complaint", id.ToString(), new { toOfficerId, reason }, null, ct);
     }
 
+    public async Task UpdateClassificationAsync(int id, int categoryId, int? subCategoryId,
+        string? responsibleDepartment, int actorId, CancellationToken ct = default)
+    {
+        var complaint = await db.Complaints.FindAsync([id], ct)
+            ?? throw new InvalidOperationException("Complaint not found");
+        var category = await db.ComplaintCategories
+            .FirstOrDefaultAsync(c => c.Id == categoryId && c.IsActive, ct)
+            ?? throw new InvalidOperationException("Category not found");
+
+        if (subCategoryId.HasValue)
+        {
+            var validSubCategory = await db.ComplaintSubCategories.AnyAsync(s =>
+                s.Id == subCategoryId.Value && s.CategoryId == categoryId && s.IsActive, ct);
+            if (!validSubCategory)
+                throw new InvalidOperationException("Subcategory does not belong to the selected category");
+        }
+
+        var department = string.IsNullOrWhiteSpace(responsibleDepartment)
+            ? category.DepartmentName
+            : responsibleDepartment.Trim();
+        if (!string.IsNullOrWhiteSpace(department))
+        {
+            var validDepartment = await db.ComplaintCategories.AnyAsync(c =>
+                c.IsActive && c.DepartmentName == department, ct);
+            if (!validDepartment)
+                throw new InvalidOperationException("Department not found");
+        }
+
+        var oldCategoryId = complaint.CategoryId;
+        var oldSubCategoryId = complaint.SubCategoryId;
+        var oldDepartment = complaint.ResponsibleDepartment;
+        complaint.CategoryId = categoryId;
+        complaint.SubCategoryId = subCategoryId;
+        complaint.ResponsibleDepartment = department;
+        complaint.UpdatedAt = DateTime.UtcNow;
+
+        await db.SaveChangesAsync(ct);
+        await auditService.LogAsync("UpdateComplaintClassification", actorId, null, "Complaint", id.ToString(), new
+        {
+            oldCategoryId,
+            categoryId,
+            oldSubCategoryId,
+            subCategoryId,
+            oldDepartment,
+            responsibleDepartment = department
+        }, null, ct);
+    }
+
     public async Task CloseAsync(int id, string resolutionNote, int actorId, CancellationToken ct = default)
-        => await UpdateStatusAsync(id, "Closed", actorId, resolutionNote, ct);
+    {
+        if (string.IsNullOrWhiteSpace(resolutionNote))
+            throw new InvalidOperationException("กรุณากรอกรายละเอียดสรุปผลก่อนปิดงาน");
+
+        var complaint = await db.Complaints.FindAsync([id], ct)
+            ?? throw new InvalidOperationException("Complaint not found");
+        if (complaint.Status is not ("InProgress" or "Resolved"))
+            throw new InvalidOperationException("ปิดงานได้เฉพาะเรื่องที่กำลังดำเนินการ");
+
+        await UpdateStatusAsync(id, "Closed", actorId, resolutionNote.Trim(), ct);
+    }
 
     public async Task ReopenAsync(int id, int actorId, CancellationToken ct = default)
     {
@@ -192,8 +255,7 @@ public class ComplaintService(
     {
         var q = ApplyFilter(db.Complaints.Include(c => c.Category).Include(c => c.AssignedTo).AsQueryable(), filter);
 
-        return await q.OrderByDescending(c => c.Priority == "Critical")
-            .ThenByDescending(c => c.Priority == "Urgent")
+        return await q.OrderBy(c => c.Status == "Closed" || c.Status == "Rejected")
             .ThenBy(c => c.CreatedAt)
             .Skip((filter.Page - 1) * filter.PageSize)
             .Take(filter.PageSize)
@@ -235,13 +297,13 @@ public class ComplaintService(
         var todayCount = await db.Complaints.CountAsync(c => c.CreatedAt >= todayStart, ct);
         var yesterdayCount = await db.Complaints.CountAsync(c => c.CreatedAt >= yesterdayStart && c.CreatedAt < todayStart, ct);
 
-        var activeStatuses = new[] { "Pending", "InProgress" };
+        var activeStatuses = new[] { "Pending", "InProgress", "Resolved" };
         var activeComplaints = await db.Complaints
             .Where(c => activeStatuses.Contains(c.Status))
             .Select(c => new { c.AssignedToId, c.SlaDeadline, c.SlaBreached, c.Status })
             .ToListAsync(ct);
 
-        var inProgressCount = activeComplaints.Count(c => c.Status == "InProgress");
+        var inProgressCount = activeComplaints.Count(c => c.Status is "InProgress" or "Resolved");
         var assignedCount = activeComplaints.Count(c => c.AssignedToId.HasValue);
         var unassignedCount = activeComplaints.Count(c => !c.AssignedToId.HasValue);
         var slaBreachedCount = activeComplaints.Count(c => c.SlaBreached);
@@ -294,7 +356,7 @@ public class ComplaintService(
                 remaining);
         }).ToList();
 
-        var activeStatuses2 = new[] { "Pending", "InProgress" };
+        var activeStatuses2 = new[] { "Pending", "InProgress", "Resolved" };
         var categoryBreakdown = await db.Complaints
             .GroupBy(c => c.Category.Name)
             .Select(g => new
@@ -319,7 +381,7 @@ public class ComplaintService(
 
     public async Task<IReadOnlyList<WorkloadItem>> GetWorkloadAsync(CancellationToken ct = default)
     {
-        var activeStatuses = new[] { "Pending", "InProgress" };
+        var activeStatuses = new[] { "Pending", "InProgress", "Resolved" };
 
         var staff = await db.StaffUsers
             .Where(u => u.IsActive && u.Role == "GeneralOfficer")
@@ -362,10 +424,26 @@ public class ComplaintService(
         if (filter.CategoryId.HasValue) q = q.Where(c => c.CategoryId == filter.CategoryId);
         if (!string.IsNullOrEmpty(filter.Priority)) q = q.Where(c => c.Priority == filter.Priority);
         if (filter.FromDate.HasValue) q = q.Where(c => c.CreatedAt >= filter.FromDate);
-        if (filter.ToDate.HasValue) q = q.Where(c => c.CreatedAt <= filter.ToDate);
+        if (filter.ToDate.HasValue)
+        {
+            var toExclusive = filter.ToDate.Value.Date.AddDays(1);
+            q = q.Where(c => c.CreatedAt < toExclusive);
+        }
         if (filter.AssignedToId.HasValue) q = q.Where(c => c.AssignedToId == filter.AssignedToId);
-        if (!string.IsNullOrEmpty(filter.Search))
-            q = q.Where(c => c.ReferenceNumber.Contains(filter.Search) || c.ReporterName.Contains(filter.Search));
+        if (!string.IsNullOrWhiteSpace(filter.Search))
+        {
+            var search = filter.Search.Trim();
+            q = q.Where(c =>
+                c.ReferenceNumber.Contains(search) ||
+                c.ReporterName.Contains(search) ||
+                c.ReporterPhone.Contains(search) ||
+                (c.ReporterEmail != null && c.ReporterEmail.Contains(search)) ||
+                c.Description.Contains(search) ||
+                (c.SubjectStation != null && c.SubjectStation.Contains(search)) ||
+                c.Category.Name.Contains(search) ||
+                (c.SubCategory != null && c.SubCategory.Name.Contains(search)) ||
+                (c.ResponsibleDepartment != null && c.ResponsibleDepartment.Contains(search)));
+        }
         return q;
     }
 

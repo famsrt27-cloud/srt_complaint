@@ -24,6 +24,10 @@
     <Content Include="Fonts\Sarabun-Bold.ttf">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <Content Include="..\docs\Update-1\images\image-015.jpg" Link="Assets\DefaultComplaintSignature.jpg">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
   </ItemGroup>
 
   <ItemGroup>
@@ -32,8 +36,8 @@
     <PackageReference Include="HtmlSanitizer" Version="9.1.974" />
     <PackageReference Include="ClosedXML" Version="0.105.0" />
     <PackageReference Include="MailKit" Version="4.16.0" />
-    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.*" />
     <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="9.*" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.*" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.*">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>

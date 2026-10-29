@@ -22,12 +22,13 @@ public class ComplaintServiceAddNoteTests
         auditService = new Mock<IAuditService>();
         var slaService = new Mock<ISlaService>();
         var notificationService = new Mock<INotificationService>();
+        var webhookService = new Mock<IWebhookService>();
         var scopeFactory = new Mock<IServiceScopeFactory>();
         var config = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> { ["FileUpload:StoragePath"] = storagePath })
             .Build();
 
-        return new ComplaintService(db, slaService.Object, notificationService.Object, auditService.Object, scopeFactory.Object, config);
+        return new ComplaintService(db, slaService.Object, notificationService.Object, auditService.Object, webhookService.Object, scopeFactory.Object, config);
     }
 
     [Fact]

@@ -32,7 +32,7 @@ public class SlaBackgroundService(IServiceScopeFactory scopeFactory, ILogger<Sla
         var breached = await db.Complaints
             .Include(c => c.AssignedTo)
             .Where(c => !c.SlaBreached && c.SlaDeadline.HasValue && c.SlaDeadline < now
-                        && c.Status != "Closed" && c.Status != "Resolved" && c.Status != "Rejected")
+                        && c.Status != "Closed" && c.Status != "Rejected")
             .ToListAsync(ct);
         foreach (var c in breached)
             c.SlaBreached = true;

@@ -78,6 +78,7 @@ public class AuditLogModel(AppDbContext db) : PageModel
         "UpdateStatus"               => "อัปเดตสถานะเรื่อง",
         "ClaimCase"                  => "รับเรื่องดำเนินการ",
         "TransferCase"               => "โอนเรื่องให้เจ้าหน้าที่อื่น",
+        "UpdateComplaintClassification" => "แก้ไขประเภทและฝ่ายรับผิดชอบ",
         "AddNote"                    => "เพิ่มบันทึก",
         "CorruptionReportSubmitted"  => "แจ้งเบาะแสทุจริต",
         "UpdateCorruptionStatus"     => "อัปเดตสถานะเรื่องทุจริต",

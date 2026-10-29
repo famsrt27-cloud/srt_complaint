@@ -17,10 +17,61 @@ namespace SRT.Complaint.Data.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "9.0.18")
+                .HasAnnotation("ProductVersion", "9.0.22")
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
+
+            modelBuilder.Entity("SRT.Complaint.Models.ApiIdempotencyRecord", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("ApiKeyId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("IdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("RequestHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("ResponseBody")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int?>("ResponseStatus")
+                        .HasColumnType("int");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExpiresAt");
+
+                    b.HasIndex("ApiKeyId", "IdempotencyKey")
+                        .IsUnique();
+
+                    b.ToTable("ApiIdempotencyRecords", "dbo");
+                });
 
             modelBuilder.Entity("SRT.Complaint.Models.ApiKey", b =>
                 {
@@ -39,6 +90,16 @@ namespace SRT.Complaint.Data.Migrations
                     b.Property<int>("CreatedById")
                         .HasColumnType("int");
 
+                    b.Property<string>("DataAccessMode")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("Environment")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
                     b.Property<DateTime?>("ExpiresAt")
                         .HasColumnType("datetime2");
 
@@ -52,8 +113,8 @@ namespace SRT.Complaint.Data.Migrations
 
                     b.Property<string>("KeyPrefix")
                         .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
 
                     b.Property<string>("KeyType")
                         .IsRequired()
@@ -68,6 +129,13 @@ namespace SRT.Complaint.Data.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<int>("PartnerId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Purpose")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
                     b.Property<int>("RateLimitPerMin")
                         .HasColumnType("int");
 
@@ -81,11 +149,22 @@ namespace SRT.Complaint.Data.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
+                    b.Property<int?>("RotatedToKeyId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("RotationGraceEndsAt")
+                        .HasColumnType("datetime2");
+
                     b.HasKey("Id");
 
                     b.HasIndex("CreatedById");
 
+                    b.HasIndex("KeyHash")
+                        .IsUnique();
+
                     b.HasIndex("RevokedById");
+
+                    b.HasIndex("PartnerId", "Environment");
 
                     b.ToTable("ApiKeys", "dbo");
                 });
@@ -282,6 +361,14 @@ namespace SRT.Complaint.Data.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
+                    b.Property<string>("ReporterPrivacyChoice")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("ResponsibleDepartment")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
                     b.Property<string>("SatisfactionNote")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
@@ -295,6 +382,9 @@ namespace SRT.Complaint.Data.Migrations
                     b.Property<DateTime?>("SlaDeadline")
                         .HasColumnType("datetime2");
 
+                    b.Property<int?>("SourcePartnerId")
+                        .HasColumnType("int");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -307,6 +397,10 @@ namespace SRT.Complaint.Data.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<string>("SubmissionPurpose")
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime2");
 
@@ -318,6 +412,8 @@ namespace SRT.Complaint.Data.Migrations
 
                     b.HasIndex("ReferenceNumber")
                         .IsUnique();
+
+                    b.HasIndex("SourcePartnerId");
 
                     b.HasIndex("SubCategoryId");
 
@@ -999,6 +1095,140 @@ namespace SRT.Complaint.Data.Migrations
                     b.ToTable("ContentBlocks", "dbo");
                 });
 
+            modelBuilder.Entity("SRT.Complaint.Models.EdocAttachmentDelivery", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ComplaintAttachmentId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("EdocDocumentLinkId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("LastAttemptAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<DateTime?>("UploadedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ComplaintAttachmentId");
+
+                    b.HasIndex("EdocDocumentLinkId", "ComplaintAttachmentId")
+                        .IsUnique();
+
+                    b.ToTable("EdocAttachmentDeliveries", "dbo");
+                });
+
+            modelBuilder.Entity("SRT.Complaint.Models.EdocDocumentLink", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("BasketId")
+                        .IsRequired()
+                        .HasMaxLength(13)
+                        .HasColumnType("nvarchar(13)");
+
+                    b.Property<string>("BasketName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("ComplaintId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("CreatedById")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("LastAttemptAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<DateTime?>("LastTrackedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("LeaseExpiresAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("NextTrackingAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("RegisterNumber")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("RemoteDocumentDate")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("RemoteStatusCode")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("RemoteStatusDescription")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<DateTime?>("SentAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("SyncStatus")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("WID")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ComplaintId")
+                        .IsUnique();
+
+                    b.HasIndex("CreatedById");
+
+                    b.HasIndex("WID")
+                        .IsUnique();
+
+                    b.HasIndex("SyncStatus", "NextTrackingAt");
+
+                    b.ToTable("EdocDocumentLinks", "dbo");
+                });
+
             modelBuilder.Entity("SRT.Complaint.Models.ExternalSyncLog", b =>
                 {
                     b.Property<int>("Id")
@@ -1164,6 +1394,103 @@ namespace SRT.Complaint.Data.Migrations
                             IsEmailEnabled = true,
                             IsSmsEnabled = false,
                             LabelTh = "ขอดูข้อมูลผู้แจ้งทุจริต"
+                        });
+                });
+
+            modelBuilder.Entity("SRT.Complaint.Models.Partner", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("ContactEmail")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("ContactName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("ContactPhone")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.ToTable("Partners", "dbo");
+                });
+
+            modelBuilder.Entity("SRT.Complaint.Models.PdfSignerSettings", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("ActingTitle")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("FullName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("PositionTitle")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("SignatureStoredPath")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedById")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UpdatedById");
+
+                    b.ToTable("PdfSignerSettings", "dbo");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            ActingTitle = "ปฏิบัติการแทน ผู้อำนวยการศูนย์ประชาสัมพันธ์",
+                            FullName = "นางสาวชัชชนก แสงมุข",
+                            PositionTitle = "หัวหน้ากองประชาสัมพันธ์",
+                            UpdatedAt = new DateTime(2026, 9, 21, 0, 0, 0, 0, DateTimeKind.Utc)
                         });
                 });
 
@@ -1427,6 +1754,9 @@ namespace SRT.Complaint.Data.Migrations
                     b.Property<DateTime?>("DeliveredAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<Guid>("DeliveryId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("EventType")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -1437,6 +1767,9 @@ namespace SRT.Complaint.Data.Migrations
 
                     b.Property<DateTime?>("NextRetryAt")
                         .HasColumnType("datetime2");
+
+                    b.Property<long?>("OutboxMessageId")
+                        .HasColumnType("bigint");
 
                     b.Property<string>("Payload")
                         .IsRequired()
@@ -1453,9 +1786,78 @@ namespace SRT.Complaint.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("WebhookId");
+                    b.HasIndex("DeliveryId")
+                        .IsUnique();
+
+                    b.HasIndex("OutboxMessageId");
+
+                    b.HasIndex("WebhookId", "OutboxMessageId")
+                        .IsUnique()
+                        .HasFilter("[OutboxMessageId] IS NOT NULL");
 
                     b.ToTable("WebhookDeliveryLogs", "dbo");
+                });
+
+            modelBuilder.Entity("SRT.Complaint.Models.WebhookOutboxMessage", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<DateTime?>("NextAttemptAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("OccurredAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("PartnerId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Payload")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("ProcessedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EventId")
+                        .IsUnique();
+
+                    b.HasIndex("PartnerId");
+
+                    b.HasIndex("ProcessedAt", "NextAttemptAt");
+
+                    b.ToTable("WebhookOutboxMessages", "dbo");
+                });
+
+            modelBuilder.Entity("SRT.Complaint.Models.ApiIdempotencyRecord", b =>
+                {
+                    b.HasOne("SRT.Complaint.Models.ApiKey", "ApiKey")
+                        .WithMany("IdempotencyRecords")
+                        .HasForeignKey("ApiKeyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ApiKey");
                 });
 
             modelBuilder.Entity("SRT.Complaint.Models.ApiKey", b =>
@@ -1466,12 +1868,20 @@ namespace SRT.Complaint.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("SRT.Complaint.Models.Partner", "Partner")
+                        .WithMany("ApiKeys")
+                        .HasForeignKey("PartnerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("SRT.Complaint.Models.StaffUser", "RevokedBy")
                         .WithMany()
                         .HasForeignKey("RevokedById")
                         .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("CreatedBy");
+
+                    b.Navigation("Partner");
 
                     b.Navigation("RevokedBy");
                 });
@@ -1521,6 +1931,11 @@ namespace SRT.Complaint.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("SRT.Complaint.Models.Partner", "SourcePartner")
+                        .WithMany("Complaints")
+                        .HasForeignKey("SourcePartnerId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("SRT.Complaint.Models.ComplaintSubCategory", "SubCategory")
                         .WithMany("Complaints")
                         .HasForeignKey("SubCategoryId");
@@ -1528,6 +1943,8 @@ namespace SRT.Complaint.Data.Migrations
                     b.Navigation("AssignedTo");
 
                     b.Navigation("Category");
+
+                    b.Navigation("SourcePartner");
 
                     b.Navigation("SubCategory");
                 });
@@ -1622,6 +2039,44 @@ namespace SRT.Complaint.Data.Migrations
                     b.Navigation("UpdatedBy");
                 });
 
+            modelBuilder.Entity("SRT.Complaint.Models.EdocAttachmentDelivery", b =>
+                {
+                    b.HasOne("SRT.Complaint.Models.ComplaintAttachment", "ComplaintAttachment")
+                        .WithMany()
+                        .HasForeignKey("ComplaintAttachmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SRT.Complaint.Models.EdocDocumentLink", "EdocDocumentLink")
+                        .WithMany("AttachmentDeliveries")
+                        .HasForeignKey("EdocDocumentLinkId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ComplaintAttachment");
+
+                    b.Navigation("EdocDocumentLink");
+                });
+
+            modelBuilder.Entity("SRT.Complaint.Models.EdocDocumentLink", b =>
+                {
+                    b.HasOne("SRT.Complaint.Models.Complaint", "Complaint")
+                        .WithOne()
+                        .HasForeignKey("SRT.Complaint.Models.EdocDocumentLink", "ComplaintId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SRT.Complaint.Models.StaffUser", "CreatedBy")
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Complaint");
+
+                    b.Navigation("CreatedBy");
+                });
+
             modelBuilder.Entity("SRT.Complaint.Models.ExternalSyncLog", b =>
                 {
                     b.HasOne("SRT.Complaint.Models.StaffUser", "TriggeredBy")
@@ -1629,6 +2084,15 @@ namespace SRT.Complaint.Data.Migrations
                         .HasForeignKey("TriggeredById");
 
                     b.Navigation("TriggeredBy");
+                });
+
+            modelBuilder.Entity("SRT.Complaint.Models.PdfSignerSettings", b =>
+                {
+                    b.HasOne("SRT.Complaint.Models.StaffUser", "UpdatedBy")
+                        .WithMany()
+                        .HasForeignKey("UpdatedById");
+
+                    b.Navigation("UpdatedBy");
                 });
 
             modelBuilder.Entity("SRT.Complaint.Models.SlaConfig", b =>
@@ -1663,17 +2127,36 @@ namespace SRT.Complaint.Data.Migrations
 
             modelBuilder.Entity("SRT.Complaint.Models.WebhookDeliveryLog", b =>
                 {
+                    b.HasOne("SRT.Complaint.Models.WebhookOutboxMessage", "OutboxMessage")
+                        .WithMany("DeliveryLogs")
+                        .HasForeignKey("OutboxMessageId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("SRT.Complaint.Models.Webhook", "Webhook")
                         .WithMany("DeliveryLogs")
                         .HasForeignKey("WebhookId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.Navigation("OutboxMessage");
+
                     b.Navigation("Webhook");
+                });
+
+            modelBuilder.Entity("SRT.Complaint.Models.WebhookOutboxMessage", b =>
+                {
+                    b.HasOne("SRT.Complaint.Models.Partner", "Partner")
+                        .WithMany()
+                        .HasForeignKey("PartnerId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Partner");
                 });
 
             modelBuilder.Entity("SRT.Complaint.Models.ApiKey", b =>
                 {
+                    b.Navigation("IdempotencyRecords");
+
                     b.Navigation("RequestLogs");
 
                     b.Navigation("Scopes");
@@ -1707,12 +2190,29 @@ namespace SRT.Complaint.Data.Migrations
                     b.Navigation("Complaints");
                 });
 
+            modelBuilder.Entity("SRT.Complaint.Models.EdocDocumentLink", b =>
+                {
+                    b.Navigation("AttachmentDeliveries");
+                });
+
+            modelBuilder.Entity("SRT.Complaint.Models.Partner", b =>
+                {
+                    b.Navigation("ApiKeys");
+
+                    b.Navigation("Complaints");
+                });
+
             modelBuilder.Entity("SRT.Complaint.Models.StaffUser", b =>
                 {
                     b.Navigation("AssignedComplaints");
                 });
 
             modelBuilder.Entity("SRT.Complaint.Models.Webhook", b =>
+                {
+                    b.Navigation("DeliveryLogs");
+                });
+
+            modelBuilder.Entity("SRT.Complaint.Models.WebhookOutboxMessage", b =>
                 {
                     b.Navigation("DeliveryLogs");
                 });

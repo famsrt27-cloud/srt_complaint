@@ -1,0 +1,93 @@
+@page
+@model SRT.Complaint.Pages.Public.SubmittedModel
+@{
+    ViewData["Title"] = "ยื่นเรื่องร้องเรียนสำเร็จ";
+    Layout = "_Layout";
+}
+
+<div class="min-h-[calc(100vh-10rem)] bg-slate-50 px-4 py-10 sm:py-16">
+    <main class="mx-auto max-w-xl" aria-labelledby="success-title">
+        <section class="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl" role="status">
+            <div class="border-b border-emerald-100 bg-emerald-50 px-6 py-6 text-center sm:px-8">
+                <div class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-600 text-white">
+                    <svg class="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" />
+                    </svg>
+                </div>
+                <h1 id="success-title" class="text-2xl font-bold text-gray-900">ยื่นเรื่องร้องเรียนสำเร็จ</h1>
+                <p class="mt-2 text-sm leading-relaxed text-gray-600">การรถไฟแห่งประเทศไทยได้รับเรื่องของท่านเรียบร้อยแล้ว</p>
+            </div>
+
+            <div class="px-6 py-6 sm:px-8">
+                <p class="text-center text-sm font-medium text-gray-600">รหัสเรื่องร้องเรียน</p>
+                <div class="mt-3 rounded-xl border-2 border-dashed border-srt-navy/30 bg-srt-navy-50 px-4 py-4 text-center">
+                    <p id="reference-number" class="break-all font-mono text-xl font-bold tracking-wide text-srt-navy">@Model.ReferenceNumber</p>
+                </div>
+
+                <button type="button" id="copy-reference"
+                        class="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-srt-navy px-4 py-2.5 text-sm font-semibold text-srt-navy transition hover:bg-srt-navy hover:text-white focus:outline-none focus:ring-2 focus:ring-srt-navy focus:ring-offset-2">
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v11a2 2 0 002 2h9a2 2 0 002-2v-2M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 9l2 2 4-4" />
+                    </svg>
+                    <span id="copy-label">คัดลอกรหัส</span>
+                </button>
+                <p id="copy-feedback" class="mt-2 min-h-5 text-center text-xs font-medium text-emerald-700" aria-live="polite"></p>
+
+                <div class="mt-5 rounded-xl bg-gray-50 p-4 text-sm leading-relaxed text-gray-600">
+                    กรุณาเก็บรหัสนี้ไว้สำหรับติดตามสถานะ ท่านสามารถบันทึกภาพหน้าจอนี้หรือใช้คำสั่งพิมพ์ของเบราว์เซอร์เพื่อเก็บเป็นหลักฐานได้
+                </div>
+
+                <div class="mt-6 grid gap-3 sm:grid-cols-2">
+                    <a asp-page="/Public/Track" asp-route-ref="@Model.ReferenceNumber"
+                       class="flex min-h-11 items-center justify-center rounded-xl bg-srt-navy px-4 py-2.5 text-center text-sm font-semibold text-white transition hover:bg-srt-navy-dark focus:outline-none focus:ring-2 focus:ring-srt-navy focus:ring-offset-2">
+                        ติดตามสถานะเรื่อง
+                    </a>
+                    <button type="button" onclick="window.print()"
+                            class="min-h-11 rounded-xl border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-srt-navy focus:ring-offset-2">
+                        พิมพ์ / บันทึกเป็น PDF
+                    </button>
+                </div>
+
+                <div class="mt-6 border-t border-gray-100 pt-5 text-center text-xs leading-relaxed text-gray-500">
+                    เว็บไซต์การรถไฟแห่งประเทศไทย<br />
+                    <a href="https://www.railway.co.th/Home/Index" target="_blank" rel="noopener noreferrer"
+                       class="break-all font-medium text-srt-navy underline hover:text-srt-navy-dark focus:outline-none focus:ring-2 focus:ring-srt-navy rounded">
+                        https://www.railway.co.th/Home/Index
+                    </a>
+                </div>
+            </div>
+        </section>
+    </main>
+</div>
+
+@section Scripts {
+    <script>
+        (function () {
+            const button = document.getElementById('copy-reference');
+            const label = document.getElementById('copy-label');
+            const feedback = document.getElementById('copy-feedback');
+            const reference = document.getElementById('reference-number').textContent.trim();
+
+            button.addEventListener('click', async function () {
+                try {
+                    await navigator.clipboard.writeText(reference);
+                    label.textContent = 'คัดลอกแล้ว';
+                    feedback.textContent = 'คัดลอกรหัสเรื่องร้องเรียนแล้ว';
+                } catch {
+                    const range = document.createRange();
+                    range.selectNodeContents(document.getElementById('reference-number'));
+                    const selection = window.getSelection();
+                    selection.removeAllRanges();
+                    selection.addRange(range);
+                    feedback.textContent = 'ไม่สามารถคัดลอกอัตโนมัติได้ ระบบได้เลือกรหัสไว้แล้ว กรุณากด Ctrl+C';
+                }
+            });
+        })();
+    </script>
+}
+
+<style media="print">
+    header, footer, nav, #copy-reference, button, a[href^="/"] { display: none !important; }
+    body, .bg-slate-50 { background: #fff !important; }
+    section { box-shadow: none !important; }
+</style>

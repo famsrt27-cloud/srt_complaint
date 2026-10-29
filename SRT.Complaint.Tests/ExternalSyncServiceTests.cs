@@ -9,7 +9,7 @@ namespace SRT.Complaint.Tests;
 
 public class ExternalSyncServiceTests
 {
-    private const string SystemKey = "traffy_fondue";
+    private const string SystemKey = "test_external";
 
     private static ExternalSyncService CreateService(
         Data.AppDbContext db, out Mock<IComplaintService> complaintService)
@@ -123,7 +123,7 @@ public class ExternalSyncServiceTests
         Assert.True(found);
         var complaint = db.Complaints.Single(c => c.ExternalId == "TICKET-4");
         Assert.Equal("Resolved", complaint.Status);
-        Assert.NotNull(complaint.ClosedAt);
+        Assert.Null(complaint.ClosedAt);
         Assert.Single(db.ComplaintNotes);
     }
 

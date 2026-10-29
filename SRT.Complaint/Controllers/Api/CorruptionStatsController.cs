@@ -6,15 +6,17 @@ using SRT.Complaint.Services;
 namespace SRT.Complaint.Controllers.Api;
 
 [ApiController]
-[Route("api/stats/corruption")]
+[ApiExplorerSettings(GroupName = "v1")]
+[Route("api/v1/stats/corruption")]
 [ServiceFilter(typeof(ApiKeyAuthFilter))]
 public class CorruptionStatsController(
     ICorruptionStatsService corruptionStatsService,
     ILogger<CorruptionStatsController> logger) : ControllerBase
 {
-    // ─── GET /api/stats/corruption ────────────────────────────────────────────
+    // GET /api/v1/stats/corruption
     [HttpGet]
     [RequireScope("corruption:stats")]
+    [RequireDataAccess("All")]
     public async Task<IActionResult> GetCorruptionStats(CancellationToken ct)
     {
         try

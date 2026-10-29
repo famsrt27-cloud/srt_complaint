@@ -10,10 +10,10 @@ public class RequireScopeAttribute(string scope) : ActionFilterAttribute
     public override void OnActionExecuting(ActionExecutingContext context)
     {
         var apiKey = context.HttpContext.Items["ApiKey"] as ApiKey;
-        if (apiKey == null || !apiKey.Scopes.Any(s => s.Scope == scope))
+        if (apiKey == null || !apiKey.Scopes.Any(s => string.Equals(s.Scope, scope, StringComparison.Ordinal)))
         {
             context.Result = new ObjectResult(
-                new { error = $"Insufficient scope. Required: '{scope}'" }) { StatusCode = 403 };
+                new { error = new { code = "insufficient_scope", message = $"Required scope: {scope}", traceId = context.HttpContext.TraceIdentifier } }) { StatusCode = 403 };
         }
     }
 }

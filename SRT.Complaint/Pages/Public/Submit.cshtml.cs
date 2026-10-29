@@ -22,7 +22,8 @@ public class SubmitModel(
 {
     private static readonly string[] AllowedExtensions = [".jpg", ".jpeg", ".png", ".pdf", ".doc", ".docx"];
     private const long MaxFileSizeBytes = 10 * 1024 * 1024; // 10 MB
-    private const int MaxFileCount = 5;
+    private const long MaxTotalFileSizeBytes = 50 * 1024 * 1024; // 50 MB
+    private const int MaxFileCount = 10;
 
     public string TurnstileSiteKey => config["Turnstile:SiteKey"] ?? "";
 
@@ -73,13 +74,14 @@ public class SubmitModel(
             string.IsNullOrWhiteSpace(Input.SubjectStation) ? null : Input.SubjectStation,
             Input.IncidentDate.HasValue ? DateOnly.FromDateTime(Input.IncidentDate.Value) : null,
             Input.Description,
-            Input.Attachments ?? []
+            Input.Attachments ?? [],
+            ReporterPrivacyChoice: Input.ReporterPrivacyChoice,
+            SubmissionPurpose: Input.SubmissionPurpose
         );
 
         var complaint = await complaintService.SubmitAsync(request);
 
-        TempData["Success"] = $"ยื่นเรื่องร้องเรียนสำเร็จ เลขที่อ้างอิง: {complaint.ReferenceNumber}";
-        return RedirectToPage("/Public/Track", new { Ref = complaint.ReferenceNumber });
+        return RedirectToPage("/Public/Submitted", new { Ref = complaint.ReferenceNumber });
     }
 
     private async Task LoadCategoriesAsync()
@@ -115,6 +117,9 @@ public class SubmitModel(
 
         if (files.Count > MaxFileCount)
             return (false, $"แนบไฟล์ได้ไม่เกิน {MaxFileCount} ไฟล์");
+
+        if (files.Sum(file => file.Length) > MaxTotalFileSizeBytes)
+            return (false, "ขนาดไฟล์แนบรวมต้องไม่เกิน 50 MB");
 
         foreach (var file in files)
         {
@@ -163,6 +168,16 @@ public class ComplaintSubmitViewModel
         get => _reporterIdCard;
         set => _reporterIdCard = value?.Replace("-", "").Replace(" ", "");
     }
+
+    [Required(ErrorMessage = "กรุณาเลือกการเปิดเผยข้อมูลผู้ร้องเรียน")]
+    [RegularExpression(ReporterPrivacyChoices.ValidationPattern, ErrorMessage = "ตัวเลือกการเปิดเผยข้อมูลไม่ถูกต้อง")]
+    [Display(Name = "การเปิดเผยข้อมูลผู้ร้องเรียน")]
+    public string? ReporterPrivacyChoice { get; set; }
+
+    [Required(ErrorMessage = "กรุณาเลือกวัตถุประสงค์การแจ้งเรื่อง")]
+    [RegularExpression(ComplaintSubmissionPurposes.ValidationPattern, ErrorMessage = "ตัวเลือกวัตถุประสงค์ไม่ถูกต้อง")]
+    [Display(Name = "วัตถุประสงค์การแจ้งเรื่อง")]
+    public string? SubmissionPurpose { get; set; }
 
     [Required(ErrorMessage = "กรุณาเลือกประเภทเรื่อง")]
     [Display(Name = "ประเภทเรื่อง")]

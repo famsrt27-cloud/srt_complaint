@@ -110,7 +110,7 @@ srt_complaint_newversion/
 - รับเรื่อง โอนเรื่อง อัปเดตสถานะ เพิ่มบันทึกภายใน
 - Export PDF รายงานเรื่องร้องเรียน
 - ดู Workload ภาพรวมการทำงาน
-- **ดึงคำร้องจากระบบภายนอก** — ปุ่ม "ดึงคำร้อง" ใน Queue เปิด modal เลือกหน่วยงาน (Traffy Fondue / ศูนย์ดำรงธรรม)
+- **ดึงคำร้องจากระบบภายนอก** — ปุ่ม "ดึงคำร้อง" ใน Queue เปิด modal เลือกหน่วยงานที่มี adapter และตั้งค่าพร้อมใช้งาน
 
 ### เจ้าหน้าที่ทุจริต (Corruption Officer)
 - Dashboard และ Queue แยกจากเรื่องทั่วไปสมบูรณ์
@@ -131,10 +131,11 @@ srt_complaint_newversion/
 - Rate limiting แบบ Sliding Window
 
 ### External System Integration
-- **Traffy Fondue Exchange API** — ดึงคำร้องจาก Traffy เข้าระบบ รฟท. อัตโนมัติ (JWT auth + token cache)
-- **Webhook receiver** — รับ push notification real-time จาก Traffy (`/api/traffy-webhook/new-issue`, `/api/traffy-webhook/update-status`)
 - **Pluggable Adapter Pattern** — รองรับเพิ่มระบบภายนอกได้ง่ายผ่าน `IExternalSystemAdapter`
 - Deduplication อัตโนมัติ — ข้ามรายการซ้ำโดยตรวจ `(ExternalSystem, ExternalId)` unique index
+- การเชื่อมต่อเฉพาะระบบจะเปิดใช้งานเมื่อมี adapter และ credentials ของระบบนั้นเท่านั้น
+- **eDOC outbound** — เจ้าหน้าที่เลือก Basket และสร้างเอกสารจากหน้า Case Detail โดยระบบใช้ service account เบื้องหลัง ไม่ต้อง login eDOC ซ้ำ
+- คู่มือตั้งค่า: [`docs/edoc-outbound-integration.md`](docs/edoc-outbound-integration.md) · รายงานความปลอดภัย: [`docs/edoc-api-security-review.md`](docs/edoc-api-security-review.md)
 
 ---
 
@@ -219,13 +220,6 @@ POST   /api/webhooks         ลงทะเบียน Webhook ใหม่
 DELETE /api/webhooks/{id}    ลบ Webhook
 ```
 
-#### Traffy Fondue Webhook Receiver (รับ push จาก Traffy)
-```
-POST   /api/traffy-webhook/new-issue      รับเรื่องใหม่จาก Traffy → import เข้าระบบ
-PATCH  /api/traffy-webhook/update-status  รับอัปเดตสถานะจาก Traffy → sync เข้าระบบ
-```
-> ต้องลงทะเบียน URL ทั้งสองกับทีม NECTEC และตั้ง `TraffyFondue:WebhookSecret`
-
 ### Scopes
 | Scope | สิทธิ์ |
 |---|---|
@@ -290,13 +284,6 @@ PATCH  /api/traffy-webhook/update-status  รับอัปเดตสถา�
   "Turnstile": {
     "SiteKey": "<Cloudflare Site Key — เว้นว่างเพื่อข้ามใน dev>",
     "SecretKey": "<Cloudflare Secret Key — เว้นว่างเพื่อข้ามใน dev>"
-  },
-  "TraffyFondue": {
-    "ApiUrl": "https://publicapi.traffy.in.th/exchange-api",
-    "Username": "<org username จาก NECTEC>",
-    "Password": "<org password>",
-    "OrgId": "<รหัส org ของ รฟท. จาก NECTEC>",
-    "WebhookSecret": "<random secret — ส่งให้ NECTEC เพื่อลงทะเบียน webhook>"
   }
 }
 ```
@@ -508,11 +495,6 @@ icacls "C:\inetpub\wwwroot\complaint\logs" /grant "IIS AppPool\SRTComplaint:(OI)
 | `Turnstile__SiteKey` | `<Cloudflare Site Key>` | |
 | `Turnstile__SecretKey` | `<Cloudflare Secret Key>` | |
 | `FileUpload__StoragePath` | `C:\SRT_Uploads\Complaints\` | |
-| `TraffyFondue__Username` | `<org username จาก NECTEC>` | |
-| `TraffyFondue__Password` | `<org password>` | |
-| `TraffyFondue__OrgId` | `<รหัส org ของ รฟท.>` | |
-| `TraffyFondue__WebhookSecret` | `<random secret>` | ส่งให้ NECTEC ลงทะเบียน webhook |
-
 > ใช้ `__` (สองขีดล่าง) แทน `:` ใน key name เสมอ
 
 **วิธีที่ 2: แก้ไข applicationHost.config โดยตรง**

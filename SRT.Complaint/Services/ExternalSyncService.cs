@@ -107,7 +107,7 @@ public class ExternalSyncService(
             var oldStatus = complaint.Status;
             complaint.Status    = newStatus;
             complaint.UpdatedAt = DateTime.UtcNow;
-            if (newStatus is "Resolved" or "Closed")
+            if (newStatus == "Closed")
                 complaint.ClosedAt = DateTime.UtcNow;
 
             db.ComplaintNotes.Add(new ComplaintNote
@@ -126,8 +126,8 @@ public class ExternalSyncService(
 
     private async Task<Models.Complaint> ImportComplaintAsync(ExternalComplaintDto item, string systemKey, CancellationToken ct)
     {
-        // Try to match the external system's category/type name against ours (e.g. Traffy's
-        // "type" field); fall back to the first active category if there's no exact match.
+        // Try to match the external system's category/type name against ours; fall back to
+        // the first active category if there's no exact match.
         ComplaintCategory? category = null;
         if (!string.IsNullOrWhiteSpace(item.CategoryHint))
             category = await db.ComplaintCategories
@@ -167,10 +167,10 @@ public class ExternalSyncService(
         return complaint;
     }
 
-    /// <summary>Downloads externally-hosted photo URLs (e.g. Traffy's Google Storage links) and
+    /// <summary>Downloads externally-hosted photo URLs and
     /// stores them as ordinary local ComplaintAttachments, same as citizen-uploaded files —
     /// so they go through the same authorized /Staff/CaseDetail?handler=Attachment access path
-    /// rather than linking out to a third-party host. Traffy caps issues at 3 photos.</summary>
+    /// rather than linking out to a third-party host. Imports are capped at 3 photos.</summary>
     private async Task SaveExternalPhotosAsync(int complaintId, string refNumber, IReadOnlyList<string> photoUrls, CancellationToken ct)
     {
         var storagePath = config["FileUpload:StoragePath"] ?? Path.GetTempPath();

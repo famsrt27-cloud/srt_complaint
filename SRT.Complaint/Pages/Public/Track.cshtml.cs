@@ -164,9 +164,8 @@ public class TrackModel(
             }
         }
 
-        if (c.ClosedAt.HasValue)
-            events.Add(new(c.ClosedAt.Value, "closed",
-                c.Status == "Resolved" ? "แก้ไขปัญหาเรียบร้อยแล้ว" : "ปิดเรื่องร้องเรียน", null));
+        if (c.Status == "Closed" && c.ClosedAt.HasValue)
+            events.Add(new(c.ClosedAt.Value, "closed", "ปิดเรื่องร้องเรียน", null));
         else if (c.Status == "Rejected")
             events.Add(new(c.UpdatedAt, "rejected", "ไม่ได้รับการพิจารณา", null));
 
@@ -183,7 +182,7 @@ public class TrackModel(
         "WaitingInfo"  => "รอข้อมูลเพิ่มเติม",
         "Forwarded"    => "ส่งต่อแผนก",
         "UnderReview"  => "อยู่ระหว่างพิจารณา",
-        "Resolved"     => "แก้ไขแล้ว",
+        "Resolved"     => "อยู่ระหว่างสรุปผล",
         "Closed"       => "ปิดเรื่อง",
         "Rejected"     => "ปฏิเสธ",
         _              => s
@@ -196,7 +195,7 @@ public class TrackModel(
         "WaitingInfo" => "bg-orange-100 text-orange-800",
         "Forwarded"   => "bg-purple-100 text-purple-800",
         "UnderReview" => "bg-indigo-100 text-indigo-800",
-        "Resolved"    => "bg-green-100 text-green-800",
+        "Resolved"    => "bg-blue-100 text-blue-800",
         "Closed"      => "bg-gray-100 text-gray-700",
         "Rejected"    => "bg-red-100 text-red-800",
         _             => "bg-gray-100 text-gray-700"

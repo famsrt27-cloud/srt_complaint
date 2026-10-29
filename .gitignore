@@ -12,11 +12,22 @@ SRT.Complaint/logs/
 ## Published output
 publish/
 out/
+/output/
+
+## Local database files / backups
+*.mdf
+*.ldf
+*.bak
 
 ## Local config (secrets / keys — ห้าม commit)
 appsettings.Production.json
 appsettings.*.local.json
 web.config
+
+## Third-party eDOC credentials/reference packages (keep outside source control)
+/RwSarabanAPI(Prod_Dev).postman_collection.json
+/RwSarabanAPI(Prod_Dev).postman_collection.zip
+/รายละเอียด API-RW691027V2.docx
 
 ## OS / Editor
 .DS_Store
@@ -34,4 +45,4 @@ desktop.ini
 design-system/
 
 ## Claude local settings
-.claude/settings.local.json
+**/.claude/settings.local.json

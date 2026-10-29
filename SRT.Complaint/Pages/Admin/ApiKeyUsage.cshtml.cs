@@ -13,6 +13,10 @@ public class ApiKeyUsageModel(AppDbContext db) : PageModel
 {
     [BindProperty(SupportsGet = true)] public int    KeyId       { get; set; }
     [BindProperty(SupportsGet = true)] public int    CurrentPage { get; set; } = 1;
+    [BindProperty(SupportsGet = true)] public DateTime? FromDate { get; set; }
+    [BindProperty(SupportsGet = true)] public DateTime? ToDate { get; set; }
+    [BindProperty(SupportsGet = true)] public string? ResultType { get; set; }
+    [BindProperty(SupportsGet = true)] public string? Endpoint { get; set; }
 
     public const int PageSize = 50;
 
@@ -27,15 +31,25 @@ public class ApiKeyUsageModel(AppDbContext db) : PageModel
     public int SuccessCount  { get; private set; }
     public int ErrorCount    { get; private set; }
     public double? AvgMs     { get; private set; }
+    public double ErrorRate => TotalCount == 0 ? 0 : Math.Round((double)ErrorCount / TotalCount * 100, 1);
+    public IReadOnlyList<string> Endpoints { get; private set; } = [];
 
     public async Task<IActionResult> OnGetAsync()
     {
         ViewData["Title"] = "API Key Usage";
 
-        ApiKey = await db.ApiKeys.Include(k => k.Scopes).FirstOrDefaultAsync(k => k.Id == KeyId);
+        ApiKey = await db.ApiKeys.Include(k => k.Partner).Include(k => k.Scopes).FirstOrDefaultAsync(k => k.Id == KeyId);
         if (ApiKey == null) return NotFound();
 
-        var q = db.ApiRequestLogs.Where(l => l.ApiKeyId == KeyId);
+        Endpoints = await db.ApiRequestLogs.Where(l => l.ApiKeyId == KeyId)
+            .Select(l => l.Endpoint).Distinct().OrderBy(x => x).ToListAsync();
+
+        var q = db.ApiRequestLogs.AsNoTracking().Where(l => l.ApiKeyId == KeyId);
+        if (FromDate.HasValue) q = q.Where(x => x.CreatedAt >= FromDate.Value.Date.ToUniversalTime());
+        if (ToDate.HasValue) q = q.Where(x => x.CreatedAt < ToDate.Value.Date.AddDays(1).ToUniversalTime());
+        if (!string.IsNullOrWhiteSpace(Endpoint)) q = q.Where(x => x.Endpoint == Endpoint);
+        if (ResultType == "success") q = q.Where(x => x.ResponseStatus >= 200 && x.ResponseStatus < 400);
+        if (ResultType == "error") q = q.Where(x => x.ResponseStatus >= 400);
 
         TotalCount = await q.CountAsync();
         TotalPages = (int)Math.Ceiling((double)TotalCount / PageSize);
@@ -47,8 +61,7 @@ public class ApiKeyUsageModel(AppDbContext db) : PageModel
             .Take(PageSize)
             .ToListAsync();
 
-        var stats = await db.ApiRequestLogs
-            .Where(l => l.ApiKeyId == KeyId)
+        var stats = await q
             .GroupBy(l => 1)
             .Select(g => new
             {

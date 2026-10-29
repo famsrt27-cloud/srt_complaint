@@ -1,5 +1,6 @@
 @page
 @model SRT.Complaint.Pages.Public.SubmitModel
+@using SRT.Complaint.Models
 @{
     ViewData["Title"] = "ยื่นเรื่องร้องเรียน";
     Layout = "_Layout";
@@ -27,8 +28,8 @@
     <form method="post" enctype="multipart/form-data" id="complaint-form" novalidate>
         @Html.AntiForgeryToken()
 
-        <div asp-validation-summary="ModelOnly"
-             class="alert-error mb-6 [&:empty]:hidden">
+        <div asp-validation-summary="ModelOnly" id="form-error-summary" role="alert" tabindex="-1"
+             class="alert-error mb-6 [&:empty]:hidden focus:outline-none focus:ring-2 focus:ring-red-500">
         </div>
 
         <!-- Section 1: ข้อมูลผู้ร้องเรียน -->
@@ -202,17 +203,118 @@
                         </svg>
                     </div>
                     <p class="text-sm font-semibold text-gray-700 mb-1">ลากไฟล์มาวาง หรือคลิกเพื่อเลือก</p>
-                    <p class="text-xs text-gray-400">JPG, PNG, PDF, DOC, DOCX · สูงสุด 5 ไฟล์ · ไม่เกิน 10 MB ต่อไฟล์</p>
+                    <p class="text-xs text-gray-400">เลือกเพิ่มได้หลายครั้ง · สูงสุด 10 ไฟล์ · 10 MB ต่อไฟล์ · รวมไม่เกิน 50 MB</p>
                     <input type="file" name="Input.Attachments" multiple
                            accept=".jpg,.jpeg,.png,.pdf,.doc,.docx"
                            class="sr-only" id="file-input"
-                           onchange="updateFileList(this.files)" />
+                           onchange="addSelectedFiles(this.files)" />
                 </div>
 
                 <ul id="file-list" class="mt-3 space-y-2 hidden" aria-label="รายการไฟล์ที่เลือก"></ul>
+                <div id="file-summary" class="hidden mt-3 text-xs text-gray-500" aria-live="polite"></div>
+                <div id="file-selection-error" class="form-error mt-2 hidden" role="alert" aria-live="assertive"></div>
                 <span asp-validation-for="Input.Attachments" class="form-error block mt-2"></span>
             </div>
         </div>
+
+        <!-- Section 4: การเปิดเผยข้อมูลผู้ร้องเรียน -->
+        <fieldset class="card mb-5" aria-describedby="privacy-choice-help Input_ReporterPrivacyChoice-error">
+            <legend class="sr-only">การเปิดเผยข้อมูลผู้ร้องเรียน</legend>
+            <div class="card-header">
+                <h2 class="font-bold text-gray-900 flex items-center gap-3 text-sm">
+                    <span class="w-7 h-7 bg-srt-navy text-white text-xs font-bold rounded-xl
+                                 flex items-center justify-center shrink-0">4</span>
+                    การเปิดเผยข้อมูลผู้ร้องเรียน
+                    <span class="text-red-500" aria-hidden="true">*</span>
+                    <span class="sr-only">(จำเป็น)</span>
+                </h2>
+            </div>
+            <div class="card-body space-y-3">
+                <p id="privacy-choice-help" class="text-sm text-gray-600 leading-relaxed">
+                    กรุณาเลือกหนึ่งข้อ ระบบจะสร้างเอกสาร PDF ตามตัวเลือกนี้ และเจ้าหน้าที่ไม่สามารถเปลี่ยนรูปแบบเอกสารเป็นอีกแบบได้
+                </p>
+
+                <label class="flex items-start gap-3 rounded-xl border border-gray-200 p-4 cursor-pointer
+                              hover:border-srt-navy/50 hover:bg-srt-navy-50 transition-colors">
+                    <input asp-for="Input.ReporterPrivacyChoice"
+                           type="radio"
+                           value="@ReporterPrivacyChoices.Disclose"
+                           required
+                           class="mt-0.5 h-5 w-5 shrink-0 text-srt-navy focus:ring-srt-navy" />
+                    <span>
+                        <span class="block text-sm font-semibold text-gray-900">ยินยอมเปิดเผยข้อมูล</span>
+                        <span class="block text-xs text-gray-600 leading-relaxed mt-1">
+                            ผู้ร้องยินดีเปิดเผยชื่อ-นามสกุล หมายเลขโทรศัพท์ อีเมล และข้อมูลติดต่อใน PDF เพื่อให้เจ้าหน้าที่ติดต่อกลับ
+                        </span>
+                    </span>
+                </label>
+
+                <label class="flex items-start gap-3 rounded-xl border border-gray-200 p-4 cursor-pointer
+                              hover:border-srt-navy/50 hover:bg-srt-navy-50 transition-colors">
+                    <input asp-for="Input.ReporterPrivacyChoice"
+                           type="radio"
+                           value="@ReporterPrivacyChoices.Conceal"
+                           required
+                           class="mt-0.5 h-5 w-5 shrink-0 text-srt-navy focus:ring-srt-navy" />
+                    <span>
+                        <span class="block text-sm font-semibold text-gray-900">ประสงค์ให้ปกปิดข้อมูล</span>
+                        <span class="block text-xs text-gray-600 leading-relaxed mt-1">
+                            PDF จะไม่แสดงชื่อ-นามสกุล หมายเลขโทรศัพท์ อีเมล และข้อมูลส่วนบุคคลของผู้ร้องเรียน
+                        </span>
+                    </span>
+                </label>
+
+                <span id="Input_ReporterPrivacyChoice-error"
+                      asp-validation-for="Input.ReporterPrivacyChoice"
+                      class="form-error block min-h-5"
+                      role="alert"></span>
+            </div>
+        </fieldset>
+
+        <!-- Section 5: วัตถุประสงค์การแจ้งเรื่อง -->
+        <fieldset class="card mb-5" aria-describedby="purpose-help Input_SubmissionPurpose-error">
+            <legend class="sr-only">วัตถุประสงค์การแจ้งเรื่อง</legend>
+            <div class="card-header">
+                <h2 class="font-bold text-gray-900 flex items-center gap-3 text-sm">
+                    <span class="w-7 h-7 bg-srt-navy text-white text-xs font-bold rounded-xl
+                                 flex items-center justify-center shrink-0">5</span>
+                    วัตถุประสงค์การแจ้งเรื่อง
+                    <span class="text-red-500" aria-hidden="true">*</span>
+                    <span class="sr-only">(จำเป็น)</span>
+                </h2>
+            </div>
+            <div class="card-body space-y-3">
+                <p id="purpose-help" class="text-sm text-gray-600 leading-relaxed">กรุณาเลือกหนึ่งข้อก่อนยื่นเรื่อง</p>
+
+                <label class="flex items-start gap-3 rounded-xl border border-gray-200 p-4 cursor-pointer
+                              hover:border-srt-navy/50 hover:bg-srt-navy-50 transition-colors">
+                    <input asp-for="Input.SubmissionPurpose" type="radio"
+                           value="@ComplaintSubmissionPurposes.ServiceImprovement" required
+                           class="mt-0.5 h-5 w-5 shrink-0 text-srt-navy focus:ring-srt-navy" />
+                    <span class="text-sm text-gray-800 leading-relaxed">
+                        เรื่องดังกล่าวต้องการแจ้งข้อมูลเพื่อให้การรถไฟแห่งประเทศไทยนำไปใช้เป็นแนวทางในการปรับปรุงและพัฒนาการให้บริการต่อไป
+                    </span>
+                </label>
+
+                <label class="flex items-start gap-3 rounded-xl border border-gray-200 p-4 cursor-pointer
+                              hover:border-srt-navy/50 hover:bg-srt-navy-50 transition-colors">
+                    <input asp-for="Input.SubmissionPurpose" type="radio"
+                           value="@ComplaintSubmissionPurposes.InvestigationAndContact" required
+                           class="mt-0.5 h-5 w-5 shrink-0 text-srt-navy focus:ring-srt-navy" />
+                    <span>
+                        <span class="block text-sm text-gray-800 leading-relaxed">
+                            เรื่องดังกล่าวต้องการให้การรถไฟแห่งประเทศไทยตรวจสอบข้อเท็จจริง พร้อมติดต่อกลับเพื่อชี้แจงผลการดำเนินการ
+                        </span>
+                        <span class="block text-xs text-gray-500 mt-1">
+                            ผู้ร้องยินยอมให้เจ้าหน้าที่ติดต่อกลับทางหมายเลขโทรศัพท์หรืออีเมลที่ระบุด้านบน
+                        </span>
+                    </span>
+                </label>
+
+                <span id="Input_SubmissionPurpose-error" asp-validation-for="Input.SubmissionPurpose"
+                      class="form-error block min-h-5" role="alert"></span>
+            </div>
+        </fieldset>
 
         <!-- Privacy Notice -->
         <div class="bg-srt-navy-50 border border-srt-navy-100 rounded-2xl p-4 mb-6 flex gap-3">
@@ -319,6 +421,8 @@
         (function () {
             const form = document.getElementById('complaint-form');
             initMasks(form);
+            const summary = document.getElementById('form-error-summary');
+            if (summary && summary.querySelector('li')) summary.focus();
         })();
         /* ────────────────────────────────────────────────────────── */
 
@@ -356,16 +460,109 @@
             if (catSel.value) updateSubCats();
         })();
 
-        function updateFileList(files) {
+        const selectedFiles = [];
+        let previewUrls = [];
+        const MAX_FILE_COUNT = 10;
+        const MAX_FILE_SIZE = 10 * 1024 * 1024;
+        const MAX_TOTAL_SIZE = 50 * 1024 * 1024;
+
+        function fileKey(file) {
+            return `${file.name}|${file.size}|${file.lastModified}`;
+        }
+
+        function syncFileInput() {
+            const transfer = new DataTransfer();
+            selectedFiles.forEach(file => transfer.items.add(file));
+            fileInput.files = transfer.files;
+        }
+
+        function showFileError(message) {
+            const error = document.getElementById('file-selection-error');
+            error.textContent = message;
+            error.classList.toggle('hidden', !message);
+        }
+
+        function addSelectedFiles(files) {
+            showFileError('');
+            const existing = new Set(selectedFiles.map(fileKey));
+            for (const file of Array.from(files || [])) {
+                if (existing.has(fileKey(file))) continue;
+                if (file.size > MAX_FILE_SIZE) {
+                    showFileError(`ไฟล์ “${file.name}” มีขนาดเกิน 10 MB`);
+                    continue;
+                }
+                if (selectedFiles.length >= MAX_FILE_COUNT) {
+                    showFileError('แนบไฟล์ได้ไม่เกิน 10 ไฟล์');
+                    break;
+                }
+                const totalAfterAdd = selectedFiles.reduce((sum, item) => sum + item.size, 0) + file.size;
+                if (totalAfterAdd > MAX_TOTAL_SIZE) {
+                    showFileError('ขนาดไฟล์แนบรวมต้องไม่เกิน 50 MB');
+                    continue;
+                }
+                selectedFiles.push(file);
+                existing.add(fileKey(file));
+            }
+            syncFileInput();
+            updateFileList();
+        }
+
+        function removeSelectedFile(index) {
+            selectedFiles.splice(index, 1);
+            showFileError('');
+            syncFileInput();
+            updateFileList();
+        }
+
+        function updateFileList() {
             const list = document.getElementById('file-list');
+            const summary = document.getElementById('file-summary');
+            previewUrls.forEach(url => URL.revokeObjectURL(url));
+            previewUrls = [];
             list.innerHTML = '';
-            if (!files || files.length === 0) { list.classList.add('hidden'); return; }
+            if (selectedFiles.length === 0) {
+                list.classList.add('hidden');
+                summary.classList.add('hidden');
+                return;
+            }
             list.classList.remove('hidden');
-            Array.from(files).forEach(f => {
+            summary.classList.remove('hidden');
+            const totalSize = selectedFiles.reduce((sum, file) => sum + file.size, 0);
+            summary.textContent = `เลือกแล้ว ${selectedFiles.length} ไฟล์ · ${(totalSize / 1024 / 1024).toFixed(1)} MB จาก 50 MB`;
+
+            selectedFiles.forEach((file, index) => {
                 const li = document.createElement('li');
-                li.className = 'flex items-center gap-3 text-xs text-gray-700 bg-gray-50 border border-gray-100 rounded-xl px-4 py-2.5';
-                const iconSvg = `<svg class="w-4 h-4 text-srt-navy shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/></svg>`;
-                li.innerHTML = `${iconSvg}<span class="truncate font-medium">${f.name}</span><span class="ml-auto shrink-0 text-gray-400">${(f.size/1024/1024).toFixed(1)} MB</span>`;
+                li.className = 'flex flex-wrap sm:flex-nowrap items-center gap-2 text-xs text-gray-700 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3';
+
+                const name = document.createElement('span');
+                name.className = 'min-w-0 flex-1 truncate font-medium';
+                name.textContent = file.name;
+                li.appendChild(name);
+
+                const size = document.createElement('span');
+                size.className = 'shrink-0 text-gray-400';
+                size.textContent = `${(file.size / 1024 / 1024).toFixed(1)} MB`;
+                li.appendChild(size);
+
+                const preview = document.createElement('a');
+                const previewUrl = URL.createObjectURL(file);
+                previewUrls.push(previewUrl);
+                preview.href = previewUrl;
+                preview.target = '_blank';
+                preview.rel = 'noopener noreferrer';
+                preview.className = 'shrink-0 font-semibold text-srt-navy hover:underline focus:outline-none focus:ring-2 focus:ring-srt-navy rounded';
+                preview.textContent = 'เปิดดู';
+                preview.setAttribute('aria-label', `เปิดดูไฟล์ ${file.name}`);
+                li.appendChild(preview);
+
+                const remove = document.createElement('button');
+                remove.type = 'button';
+                remove.className = 'shrink-0 min-w-11 min-h-11 sm:min-w-0 sm:min-h-0 px-2 text-red-600 font-semibold hover:underline focus:outline-none focus:ring-2 focus:ring-red-500 rounded';
+                remove.textContent = 'ลบ';
+                remove.setAttribute('aria-label', `ลบไฟล์ ${file.name}`);
+                remove.addEventListener('click', () => removeSelectedFile(index));
+                li.appendChild(remove);
+
                 list.appendChild(li);
             });
         }
@@ -380,13 +577,11 @@
         dropZone.addEventListener('drop', e => {
             e.preventDefault();
             dropZone.classList.remove('border-srt-navy', 'bg-srt-navy-50');
-            const dt = new DataTransfer();
-            Array.from(e.dataTransfer.files).forEach(f => dt.items.add(f));
-            fileInput.files = dt.files;
-            updateFileList(fileInput.files);
+            addSelectedFiles(e.dataTransfer.files);
         });
 
         document.getElementById('complaint-form').addEventListener('submit', function () {
+            if (!this.checkValidity() || !$(this).valid()) return;
             const btn = document.getElementById('submit-btn');
             const spinner = document.getElementById('submit-spinner');
             btn.disabled = true;

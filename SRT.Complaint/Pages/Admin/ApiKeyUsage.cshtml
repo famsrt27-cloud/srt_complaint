@@ -7,135 +7,107 @@
 
 @if (Model.ApiKey == null)
 {
-    <p class="text-red-600">ไม่พบ API Key</p>
+    <div role="alert" class="rounded-xl border border-red-200 bg-red-50 p-4 text-red-700">ไม่พบ API Key</div>
     return;
 }
 
-<div class="mb-5">
-    <div class="flex items-center gap-2 text-xs text-gray-400 mb-1">
-        <a asp-page="/Admin/ApiKeys" class="hover:text-srt-navy">API Keys</a>
-        <span>/</span>
-        <span>Usage</span>
+<div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <div>
+        <nav aria-label="Breadcrumb" class="mb-1 flex items-center gap-2 text-xs text-gray-500">
+            <a asp-page="/Admin/ApiKeys" class="hover:text-srt-navy">API Keys</a><span aria-hidden="true">/</span><span>Usage</span>
+        </nav>
+        <h1 class="text-xl font-bold text-gray-900">@Model.ApiKey.Name</h1>
+        <p class="mt-1 text-sm text-gray-500">@Model.ApiKey.Partner.Name (@Model.ApiKey.Partner.Code) · @Model.ApiKey.Environment · <code>@Model.ApiKey.KeyPrefix…</code></p>
     </div>
-    <h1 class="text-xl font-bold text-gray-900">Usage: @Model.ApiKey.Name</h1>
-    <p class="text-gray-500 text-sm mt-0.5">ประวัติการเรียก API</p>
+    <a asp-page="/Admin/ApiKeys" class="min-h-11 inline-flex items-center rounded-lg border border-gray-300 bg-white px-4 text-sm font-medium text-gray-700 hover:bg-gray-50">กลับหน้าจัดการคีย์</a>
 </div>
 
-<!-- Stats cards -->
-<div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-    <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-        <p class="text-xs text-gray-400 mb-1">Total Requests</p>
-        <p class="text-2xl font-bold text-gray-900">@Model.TotalCount.ToString("N0")</p>
+<div class="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-5">
+    <div class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"><p class="text-xs text-gray-500">Requests</p><p class="mt-1 text-2xl font-bold">@Model.TotalCount.ToString("N0")</p></div>
+    <div class="rounded-xl border border-green-200 bg-green-50 p-4 shadow-sm"><p class="text-xs text-green-700">สำเร็จ</p><p class="mt-1 text-2xl font-bold text-green-700">@Model.SuccessCount.ToString("N0")</p></div>
+    <div class="rounded-xl border border-red-200 bg-red-50 p-4 shadow-sm"><p class="text-xs text-red-700">ผิดพลาด</p><p class="mt-1 text-2xl font-bold text-red-700">@Model.ErrorCount.ToString("N0")</p></div>
+    <div class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"><p class="text-xs text-gray-500">Error rate</p><p class="mt-1 text-2xl font-bold">@Model.ErrorRate%</p></div>
+    <div class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"><p class="text-xs text-gray-500">Response เฉลี่ย</p><p class="mt-1 text-2xl font-bold">@(Model.AvgMs.HasValue ? $"{Model.AvgMs:F0} ms" : "—")</p></div>
+</div>
+
+<form method="get" class="mb-5 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+    <input type="hidden" name="KeyId" value="@Model.KeyId" />
+    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <div><label asp-for="FromDate" class="block text-xs font-medium text-gray-600">ตั้งแต่วันที่</label><input asp-for="FromDate" type="date" class="mt-1 min-h-11 w-full rounded-lg border border-gray-300 px-3 text-sm" /></div>
+        <div><label asp-for="ToDate" class="block text-xs font-medium text-gray-600">ถึงวันที่</label><input asp-for="ToDate" type="date" class="mt-1 min-h-11 w-full rounded-lg border border-gray-300 px-3 text-sm" /></div>
+        <div><label asp-for="ResultType" class="block text-xs font-medium text-gray-600">ผลลัพธ์</label><select asp-for="ResultType" class="mt-1 min-h-11 w-full rounded-lg border border-gray-300 px-3 text-sm"><option value="">ทั้งหมด</option><option value="success">สำเร็จ</option><option value="error">ผิดพลาด</option></select></div>
+        <div><label asp-for="Endpoint" class="block text-xs font-medium text-gray-600">Endpoint</label><select asp-for="Endpoint" class="mt-1 min-h-11 w-full rounded-lg border border-gray-300 px-3 text-sm"><option value="">ทั้งหมด</option>@foreach (var endpoint in Model.Endpoints){<option value="@endpoint">@endpoint</option>}</select></div>
+        <div class="flex items-end gap-2"><button type="submit" class="min-h-11 flex-1 rounded-lg bg-srt-navy px-4 text-sm font-semibold text-white">กรอง</button><a asp-page="/Admin/ApiKeyUsage" asp-route-keyId="@Model.KeyId" class="min-h-11 inline-flex items-center rounded-lg border border-gray-300 px-3 text-sm">ล้าง</a></div>
     </div>
-    <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-        <p class="text-xs text-gray-400 mb-1">Successful (2xx)</p>
-        <p class="text-2xl font-bold text-green-600">@Model.SuccessCount.ToString("N0")</p>
-    </div>
-    <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-        <p class="text-xs text-gray-400 mb-1">Errors (4xx/5xx)</p>
-        <p class="text-2xl font-bold text-red-600">@Model.ErrorCount.ToString("N0")</p>
-    </div>
-    <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-        <p class="text-xs text-gray-400 mb-1">Avg Response</p>
-        <p class="text-2xl font-bold text-gray-900">@(Model.AvgMs.HasValue ? $"{Model.AvgMs:F0} ms" : "—")</p>
+</form>
+
+<div class="mb-5 rounded-xl border border-gray-200 bg-white p-4 text-sm shadow-sm">
+    <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div><p class="text-xs text-gray-500">ขอบเขตข้อมูล</p><p class="mt-1 font-medium">@(Model.ApiKey.DataAccessMode == "Own" ? "เฉพาะ Partner" : "ข้อมูลทั้งหมด")</p></div>
+        <div><p class="text-xs text-gray-500">Rate limit</p><p class="mt-1 font-medium">@Model.ApiKey.RateLimitPerMin requests/minute</p></div>
+        <div><p class="text-xs text-gray-500">Scopes</p><div class="mt-1 flex flex-wrap gap-1">@foreach (var scope in Model.ApiKey.Scopes){<span class="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-xs">@scope.Scope</span>}</div></div>
     </div>
 </div>
 
-<!-- Key info -->
-<div class="bg-white rounded-xl border border-gray-200 shadow-sm p-4 mb-5 text-sm">
-    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div>
-            <p class="text-xs text-gray-400 mb-0.5">Prefix</p>
-            <p class="font-mono font-medium">@Model.ApiKey.KeyPrefix</p>
-        </div>
-        <div>
-            <p class="text-xs text-gray-400 mb-0.5">Type</p>
-            <p>@Model.ApiKey.KeyType</p>
-        </div>
-        <div>
-            <p class="text-xs text-gray-400 mb-0.5">Rate Limit</p>
-            <p>@Model.ApiKey.RateLimitPerMin req/min</p>
-        </div>
-        <div>
-            <p class="text-xs text-gray-400 mb-0.5">Scopes</p>
-            <div class="flex flex-wrap gap-1">
-                @foreach (var scope in Model.ApiKey.Scopes)
-                {
-                    <span class="bg-gray-100 text-gray-700 text-xs px-1.5 py-0.5 rounded font-mono">@scope.Scope</span>
-                }
+<div class="space-y-3 md:hidden">
+    @if (!Model.Logs.Any())
+    {
+        <div class="rounded-xl border border-dashed border-gray-300 bg-white p-8 text-center text-sm text-gray-500">ไม่พบข้อมูลตามตัวกรอง</div>
+    }
+    @foreach (var log in Model.Logs)
+    {
+        var ok = log.ResponseStatus >= 200 && log.ResponseStatus < 400;
+        <article class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+            <div class="flex items-center justify-between gap-3">
+                <span class="font-mono text-sm font-semibold">@log.HttpMethod</span>
+                <span class="rounded px-2 py-1 font-mono text-xs font-semibold @(ok ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700")">@log.ResponseStatus</span>
             </div>
-        </div>
-    </div>
+            <p class="mt-2 break-all font-mono text-xs text-gray-800">@log.Endpoint</p>
+            <dl class="mt-3 grid grid-cols-2 gap-2 border-t border-gray-100 pt-3 text-xs">
+                <div><dt class="text-gray-500">เวลา</dt><dd class="mt-0.5">@log.CreatedAt.ToLocalTime().ToString("dd/MM/yy HH:mm:ss")</dd></div>
+                <div><dt class="text-gray-500">Duration</dt><dd class="mt-0.5">@(log.ResponseMs.HasValue ? $"{log.ResponseMs} ms" : "—")</dd></div>
+                <div class="col-span-2"><dt class="text-gray-500">IP</dt><dd class="mt-0.5 font-mono">@(log.IpAddress ?? "—")</dd></div>
+            </dl>
+        </article>
+    }
 </div>
 
-<!-- Logs table -->
-<div class="overflow-x-auto rounded-xl border border-gray-200 shadow-sm bg-white mb-4">
-    <table class="w-full text-sm border-collapse">
-        <thead>
-            <tr class="bg-gray-50 text-gray-600 text-left text-xs">
-                <th class="px-4 py-3 font-semibold border-b border-gray-200 whitespace-nowrap">เวลา</th>
-                <th class="px-4 py-3 font-semibold border-b border-gray-200">Method</th>
-                <th class="px-4 py-3 font-semibold border-b border-gray-200">Endpoint</th>
-                <th class="px-4 py-3 font-semibold border-b border-gray-200">Status</th>
-                <th class="px-4 py-3 font-semibold border-b border-gray-200">Duration</th>
-                <th class="px-4 py-3 font-semibold border-b border-gray-200">IP</th>
-            </tr>
-        </thead>
+<div class="hidden overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm md:block">
+    <table class="w-full min-w-[760px] border-collapse text-sm">
+        <thead><tr class="bg-gray-50 text-left text-xs text-gray-600"><th class="border-b px-4 py-3">เวลา</th><th class="border-b px-4 py-3">Method</th><th class="border-b px-4 py-3">Endpoint</th><th class="border-b px-4 py-3">Status</th><th class="border-b px-4 py-3">Duration</th><th class="border-b px-4 py-3">IP</th></tr></thead>
         <tbody>
-            @if (!Model.Logs.Any())
-            {
-                <tr>
-                    <td colspan="6" class="px-4 py-10 text-center text-gray-400 text-sm">ยังไม่มีข้อมูล</td>
-                </tr>
-            }
-            @foreach (var log in Model.Logs)
-            {
-                var statusOk = log.ResponseStatus >= 200 && log.ResponseStatus < 300;
-                var statusErr = log.ResponseStatus >= 400;
-                <tr class="hover:bg-gray-50/50 border-b border-gray-100 last:border-b-0">
-                    <td class="px-4 py-2.5 text-gray-400 text-xs font-mono whitespace-nowrap">
-                        @log.CreatedAt.ToLocalTime().ToString("dd/MM/yy HH:mm:ss")
-                    </td>
-                    <td class="px-4 py-2.5">
-                        <span class="font-mono text-xs font-semibold
-                            @(log.HttpMethod == "GET" ? "text-blue-700" :
-                              log.HttpMethod == "POST" ? "text-green-700" :
-                              log.HttpMethod == "PUT" ? "text-amber-700" : "text-red-700")">
-                            @log.HttpMethod
-                        </span>
-                    </td>
-                    <td class="px-4 py-2.5 font-mono text-xs text-gray-700">@log.Endpoint</td>
-                    <td class="px-4 py-2.5">
-                        <span class="font-mono text-xs font-semibold
-                            @(statusOk ? "text-green-700" : statusErr ? "text-red-700" : "text-gray-600")">
-                            @log.ResponseStatus
-                        </span>
-                    </td>
-                    <td class="px-4 py-2.5 text-xs text-gray-500">
-                        @(log.ResponseMs.HasValue ? $"{log.ResponseMs} ms" : "—")
-                    </td>
-                    <td class="px-4 py-2.5 text-xs text-gray-400 font-mono">@(log.IpAddress ?? "—")</td>
-                </tr>
-            }
+        @if (!Model.Logs.Any())
+        {
+            <tr><td colspan="6" class="px-4 py-12 text-center text-gray-500">ไม่พบข้อมูลตามตัวกรอง</td></tr>
+        }
+        @foreach (var log in Model.Logs)
+        {
+            var ok = log.ResponseStatus >= 200 && log.ResponseStatus < 400;
+            <tr class="border-b border-gray-100 last:border-0 hover:bg-gray-50">
+                <td class="whitespace-nowrap px-4 py-3 font-mono text-xs text-gray-500">@log.CreatedAt.ToLocalTime().ToString("dd/MM/yy HH:mm:ss")</td>
+                <td class="px-4 py-3 font-mono text-xs font-semibold">@log.HttpMethod</td>
+                <td class="px-4 py-3 font-mono text-xs">@log.Endpoint</td>
+                <td class="px-4 py-3"><span class="rounded px-2 py-1 font-mono text-xs font-semibold @(ok ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700")">@log.ResponseStatus</span></td>
+                <td class="px-4 py-3 text-xs text-gray-600">@(log.ResponseMs.HasValue ? $"{log.ResponseMs} ms" : "—")</td>
+                <td class="px-4 py-3 font-mono text-xs text-gray-500">@(log.IpAddress ?? "—")</td>
+            </tr>
+        }
         </tbody>
     </table>
 </div>
 
-<!-- Pagination -->
 @if (Model.TotalPages > 1)
 {
-    <div class="flex items-center justify-between">
-        <p class="text-sm text-gray-500">แสดง @Model.PageStart–@Model.PageEnd จาก @Model.TotalCount.ToString("N0") รายการ</p>
-        <div class="flex gap-1">
+    <div class="mt-4 flex items-center justify-between gap-3">
+        <p class="text-sm text-gray-500">แสดง @Model.PageStart–@Model.PageEnd จาก @Model.TotalCount.ToString("N0")</p>
+        <div class="flex gap-2">
             @if (Model.CurrentPage > 1)
             {
-                <a asp-page="/Admin/ApiKeyUsage" asp-route-keyId="@Model.KeyId" asp-route-currentPage="@(Model.CurrentPage-1)"
-                   class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">← ก่อนหน้า</a>
+                <a asp-page="/Admin/ApiKeyUsage" asp-route-keyId="@Model.KeyId" asp-route-currentPage="@(Model.CurrentPage - 1)" asp-route-fromDate="@Model.FromDate?.ToString("yyyy-MM-dd")" asp-route-toDate="@Model.ToDate?.ToString("yyyy-MM-dd")" asp-route-resultType="@Model.ResultType" asp-route-endpoint="@Model.Endpoint" class="min-h-11 inline-flex items-center rounded-lg border border-gray-300 px-3 text-sm">← ก่อนหน้า</a>
             }
             @if (Model.CurrentPage < Model.TotalPages)
             {
-                <a asp-page="/Admin/ApiKeyUsage" asp-route-keyId="@Model.KeyId" asp-route-currentPage="@(Model.CurrentPage+1)"
-                   class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">ถัดไป →</a>
+                <a asp-page="/Admin/ApiKeyUsage" asp-route-keyId="@Model.KeyId" asp-route-currentPage="@(Model.CurrentPage + 1)" asp-route-fromDate="@Model.FromDate?.ToString("yyyy-MM-dd")" asp-route-toDate="@Model.ToDate?.ToString("yyyy-MM-dd")" asp-route-resultType="@Model.ResultType" asp-route-endpoint="@Model.Endpoint" class="min-h-11 inline-flex items-center rounded-lg border border-gray-300 px-3 text-sm">ถัดไป →</a>
             }
         </div>
     </div>

@@ -1,16 +1,19 @@
 #nullable enable
 using ClosedXML.Excel;
+using System.Net;
+using System.Text;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
 using SRT.Complaint.Data;
 using SRT.Complaint.Models;
+using SRT.Complaint.Services;
 
 namespace SRT.Complaint.Pages.Admin;
 
 [Authorize(Policy = "SuperAdmin")]
-public class ReportsModel(AppDbContext db) : PageModel
+public class ReportsModel(AppDbContext db, IPdfExportService pdfExportService) : PageModel
 {
     public IReadOnlyList<CategoryStat>  ByCategorySeries { get; private set; } = [];
     public IReadOnlyList<StatusStat>    ByStatusSeries   { get; private set; } = [];
@@ -28,24 +31,38 @@ public class ReportsModel(AppDbContext db) : PageModel
         await LoadStatsAsync();
     }
 
-    // ─── Excel Export ───
-    public async Task<IActionResult> OnPostExportAsync()
+    public async Task<IActionResult> OnPostExportAsync(string format = "excel")
     {
         var complaints = await db.Complaints
             .Include(c => c.Category)
+            .Include(c => c.SubCategory)
             .Include(c => c.AssignedTo)
             .OrderByDescending(c => c.CreatedAt)
             .Take(5000)
             .ToListAsync();
+
+        var stamp = DateTime.Now.ToString("yyyyMMdd_HHmm");
+        if (string.Equals(format, "pdf", StringComparison.OrdinalIgnoreCase))
+        {
+            var pdf = pdfExportService.GenerateComplaintReportPdf(complaints, User.Identity?.Name);
+            return File(pdf, "application/pdf", $"complaints_{stamp}.pdf");
+        }
+
+        if (string.Equals(format, "word", StringComparison.OrdinalIgnoreCase))
+        {
+            var word = BuildWordDocument(complaints);
+            return File(word, "application/msword", $"complaints_{stamp}.doc");
+        }
 
         using var wb = new XLWorkbook();
         var ws = wb.Worksheets.Add("เรื่องร้องเรียน");
 
         var headers = new[]
         {
-            "เลขที่อ้างอิง", "หมวดหมู่", "สถานะ", "ความสำคัญ",
-            "ผู้ร้องเรียน", "โทรศัพท์", "ผู้รับผิดชอบ",
-            "SLA Deadline", "SLA เกินกำหนด", "วันที่รับเรื่อง", "วันที่ปิด"
+            "เลขที่อ้างอิง", "หมวดหมู่", "หัวข้อย่อย", "ฝ่ายรับผิดชอบ", "สถานะ", "ความสำคัญ",
+            "ผู้ร้องเรียน", "โทรศัพท์", "อีเมล", "วัตถุประสงค์",
+            "รายละเอียด", "เจ้าหน้าที่ผู้รับผิดชอบ", "SLA Deadline",
+            "SLA เกินกำหนด", "วันที่รับเรื่อง", "วันที่ปิด"
         };
         for (int c = 0; c < headers.Length; c++)
         {
@@ -61,26 +78,61 @@ public class ReportsModel(AppDbContext db) : PageModel
             var comp = complaints[row];
             ws.Cell(r, 1).Value  = comp.ReferenceNumber;
             ws.Cell(r, 2).Value  = comp.Category?.Name ?? "";
-            ws.Cell(r, 3).Value  = comp.Status;
-            ws.Cell(r, 4).Value  = comp.Priority;
-            ws.Cell(r, 5).Value  = comp.ReporterName;
-            ws.Cell(r, 6).Value  = comp.ReporterPhone;
-            ws.Cell(r, 7).Value  = comp.AssignedTo?.FullName ?? "";
-            ws.Cell(r, 8).Value  = comp.SlaDeadline.HasValue
+            ws.Cell(r, 3).Value  = comp.SubCategory?.Name ?? "";
+            ws.Cell(r, 4).Value  = comp.ResponsibleDepartment ?? comp.Category?.DepartmentName ?? "";
+            ws.Cell(r, 5).Value  = comp.Status;
+            ws.Cell(r, 6).Value  = comp.Priority;
+            ws.Cell(r, 7).Value  = comp.ReporterName;
+            ws.Cell(r, 8).Value  = comp.ReporterPhone;
+            ws.Cell(r, 9).Value  = comp.ReporterEmail ?? "";
+            ws.Cell(r, 10).Value = ComplaintSubmissionPurposes.Label(comp.SubmissionPurpose);
+            ws.Cell(r, 11).Value = comp.Description;
+            ws.Cell(r, 12).Value = comp.AssignedTo?.FullName ?? "";
+            ws.Cell(r, 13).Value = comp.SlaDeadline.HasValue
                 ? comp.SlaDeadline.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm") : "";
-            ws.Cell(r, 9).Value  = comp.SlaBreached ? "ใช่" : "ไม่";
-            ws.Cell(r, 10).Value = comp.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm");
-            ws.Cell(r, 11).Value = comp.ClosedAt.HasValue
+            ws.Cell(r, 14).Value = comp.SlaBreached ? "ใช่" : "ไม่";
+            ws.Cell(r, 15).Value = comp.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm");
+            ws.Cell(r, 16).Value = comp.ClosedAt.HasValue
                 ? comp.ClosedAt.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm") : "";
         }
 
         ws.Columns().AdjustToContents();
+        ws.Column(11).Width = 50;
+        ws.Column(11).Style.Alignment.WrapText = true;
 
         using var ms = new MemoryStream();
         wb.SaveAs(ms);
         return File(ms.ToArray(),
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            $"complaints_{DateTime.Now:yyyyMMdd_HHmm}.xlsx");
+            $"complaints_{stamp}.xlsx");
+    }
+
+    private static byte[] BuildWordDocument(IReadOnlyList<Models.Complaint> complaints)
+    {
+        static string Encode(string? value) => WebUtility.HtmlEncode(value ?? "-");
+
+        var html = new StringBuilder();
+        html.Append("<html><head><meta charset='utf-8'><style>")
+            .Append("body{font-family:'Sarabun','Tahoma',sans-serif;font-size:11pt;color:#1f2937}")
+            .Append("h1{color:#0D2E6E}table{width:100%;border-collapse:collapse;margin-bottom:16px;page-break-inside:avoid}")
+            .Append("th,td{border:1px solid #d1d5db;padding:6px;text-align:left;vertical-align:top}th{width:22%;background:#f3f4f6}")
+            .Append("</style></head><body><h1>รายงานรายละเอียดเรื่องร้องเรียน</h1>")
+            .Append($"<p>จำนวน {complaints.Count:N0} รายการ · ส่งออกเมื่อ {DateTime.Now:dd/MM/yyyy HH:mm}</p>");
+
+        foreach (var complaint in complaints)
+        {
+            html.Append("<table>")
+                .Append($"<tr><th>เลขที่อ้างอิง</th><td>{Encode(complaint.ReferenceNumber)}</td><th>วันที่รับเรื่อง</th><td>{complaint.CreatedAt.ToLocalTime():dd/MM/yyyy HH:mm}</td></tr>")
+                .Append($"<tr><th>ประเภทเรื่อง</th><td>{Encode(complaint.Category?.Name)}</td><th>หัวข้อย่อย</th><td>{Encode(complaint.SubCategory?.Name)}</td></tr>")
+                .Append($"<tr><th>ฝ่ายรับผิดชอบ</th><td>{Encode(complaint.ResponsibleDepartment ?? complaint.Category?.DepartmentName)}</td><th>สถานะ</th><td>{Encode(complaint.Status)}</td></tr>")
+                .Append($"<tr><th>ผู้ร้อง</th><td>{Encode(complaint.ReporterName)}</td><th>โทรศัพท์</th><td>{Encode(complaint.ReporterPhone)}</td></tr>")
+                .Append($"<tr><th>อีเมล</th><td>{Encode(complaint.ReporterEmail)}</td><th>วัตถุประสงค์</th><td>{Encode(ComplaintSubmissionPurposes.Label(complaint.SubmissionPurpose))}</td></tr>")
+                .Append($"<tr><th>รายละเอียด</th><td colspan='3'>{Encode(complaint.Description).Replace("\n", "<br>")}</td></tr>")
+                .Append("</table>");
+        }
+
+        html.Append("</body></html>");
+        return Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(html.ToString())).ToArray();
     }
 
     private async Task LoadStatsAsync()

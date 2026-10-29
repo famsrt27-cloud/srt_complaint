@@ -1,5 +1,9 @@
 # REST API — ระบบรับเรื่องร้องเรียน รฟท.
 
+> **เอกสารนี้เป็นข้อมูล API รุ่นเดิมและเก็บไว้เพื่ออ้างอิงเท่านั้น**
+> สำหรับ `/api/v1`, Partner ownership, Idempotency และ Signed Webhook ให้ใช้
+> [คู่มือ Partner API v1](docs/partner-api-v1-integration-guide.md) เป็นเอกสารหลัก
+
 เอกสารนี้อธิบาย REST API ของระบบรับเรื่องร้องเรียนออนไลน์ การรถไฟแห่งประเทศไทย  
 สำหรับระบบภายนอกที่ต้องการเชื่อมต่อ เช่น e-Document, ระบบ Dashboard, หรือ Third-party Integrations
 

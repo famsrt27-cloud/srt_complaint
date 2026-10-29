@@ -8,12 +8,12 @@ public class WebhookRetryService(
     {
         while (!stoppingToken.IsCancellationRequested)
         {
-            await Task.Delay(TimeSpan.FromMinutes(5), stoppingToken).ConfigureAwait(false);
+            await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken).ConfigureAwait(false);
             try
             {
                 using var scope = scopeFactory.CreateScope();
                 var svc = scope.ServiceProvider.GetRequiredService<IWebhookService>();
-                await svc.RetryPendingAsync(stoppingToken);
+                await svc.DispatchPendingOutboxAsync(stoppingToken);
             }
             catch (OperationCanceledException) { }
             catch (Exception ex)

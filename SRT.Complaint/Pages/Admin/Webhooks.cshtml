@@ -49,7 +49,10 @@
                             <span class="text-xs text-red-500">ปิดใช้งาน</span>
                         }
                     </td>
-                    <td class="px-4 py-3 text-xs text-gray-600">@(wh.ApiKey?.Name ?? $"#{wh.ApiKeyId}")</td>
+                    <td class="px-4 py-3 text-xs text-gray-600">
+                        <div class="font-medium">@(wh.ApiKey?.Name ?? $"#{wh.ApiKeyId}")</div>
+                        <div class="text-gray-400">@(wh.ApiKey?.Partner?.Name ?? "-") · @(wh.ApiKey?.Environment ?? "-")</div>
+                    </td>
                     <td class="px-4 py-3">
                         <span class="font-mono text-xs text-gray-600 truncate block max-w-[200px]" title="@wh.TargetUrl">
                             @wh.TargetUrl
@@ -103,6 +106,6 @@
 <!-- Info box -->
 <div class="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-700">
     <p class="font-semibold mb-1">วิธีสร้าง Webhook</p>
-    <p>สร้าง Webhook ผ่าน API: <code class="font-mono bg-blue-100 px-1 rounded">POST /api/webhooks</code> ด้วย scope <code class="font-mono bg-blue-100 px-1 rounded">webhooks:manage</code></p>
+    <p>สร้าง Webhook ผ่าน API: <code class="font-mono bg-blue-100 px-1 rounded">POST /api/v1/webhooks</code> ด้วย scope <code class="font-mono bg-blue-100 px-1 rounded">webhooks:manage</code></p>
     <p class="mt-1">Events ที่รองรับ: <code class="font-mono bg-blue-100 px-1 rounded">complaint.created</code>, <code class="font-mono bg-blue-100 px-1 rounded">complaint.status_changed</code>, <code class="font-mono bg-blue-100 px-1 rounded">complaint.closed</code></p>
 </div>

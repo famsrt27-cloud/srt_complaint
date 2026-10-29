@@ -1,0 +1,176 @@
+{
+  "info": {
+    "name": "SRT Complaint Partner API v1",
+    "description": "ตัวอย่างคำขอสำหรับ Partner API v1 โปรดตั้งค่า baseUrl และ apiKey ใน Environment ก่อนใช้งาน",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "apikey",
+    "apikey": [
+      { "key": "key", "value": "X-API-Key", "type": "string" },
+      { "key": "value", "value": "{{apiKey}}", "type": "string" },
+      { "key": "in", "value": "header", "type": "string" }
+    ]
+  },
+  "item": [
+    {
+      "name": "Metadata",
+      "item": [
+        {
+          "name": "List categories",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/metadata/categories" }
+        },
+        {
+          "name": "List statuses",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/metadata/statuses" }
+        },
+        {
+          "name": "List webhook events",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/metadata/webhook-events" }
+        }
+      ]
+    },
+    {
+      "name": "Complaints",
+      "item": [
+        {
+          "name": "Create complaint",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// คงค่าเดิมไว้เมื่อกด retry เพื่อให้ server replay ผลลัพธ์เดิม",
+                  "if (!pm.environment.get('idempotencyKey')) {",
+                  "  pm.environment.set('idempotencyKey', pm.variables.replaceIn('{{$guid}}'));",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const json = pm.response.json();",
+                  "  pm.environment.set('referenceNumber', json.referenceNumber);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{idempotencyKey}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"externalReference\": \"{{externalReference}}\",\n  \"reporterName\": \"สมชาย ใจดี\",\n  \"reporterPhone\": \"0812345678\",\n  \"reporterEmail\": \"somchai@example.com\",\n  \"categoryId\": {{categoryId}},\n  \"subCategoryId\": null,\n  \"subjectStation\": \"สถานีกลางกรุงเทพอภิวัฒน์\",\n  \"incidentDate\": \"2026-10-27T00:00:00+07:00\",\n  \"description\": \"รายละเอียดตัวอย่างสำหรับทดสอบการเชื่อมต่อระบบ\",\n  \"latitude\": 13.8039,\n  \"longitude\": 100.5402\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/complaints"
+          }
+        },
+        {
+          "name": "List complaints for reconciliation",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/complaints?updatedSince={{updatedSince}}&page=1&pageSize=20"
+          }
+        },
+        {
+          "name": "Get by SRT reference",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/complaints/{{referenceNumber}}" }
+        },
+        {
+          "name": "Get by partner reference",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/complaints/by-external-reference/{{externalReference}}" }
+        },
+        {
+          "name": "Get status",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/complaints/{{referenceNumber}}/status" }
+        },
+        {
+          "name": "Update status",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"newStatus\": \"InProgress\",\n  \"note\": \"ระบบปลายทางรับเรื่องและเริ่มดำเนินการแล้ว\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/complaints/{{referenceNumber}}/status"
+          }
+        },
+        {
+          "name": "Get eDOC payload",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/complaints/{{referenceNumber}}/edoc-payload" }
+        }
+      ]
+    },
+    {
+      "name": "Statistics",
+      "item": [
+        {
+          "name": "Summary",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/stats/summary" }
+        },
+        {
+          "name": "Detailed",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/stats/detailed" }
+        },
+        {
+          "name": "Corruption statistics (Internal only)",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/stats/corruption" }
+        }
+      ]
+    },
+    {
+      "name": "Webhooks",
+      "item": [
+        {
+          "name": "Create webhook",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const json = pm.response.json();",
+                  "  pm.environment.set('webhookId', json.id);",
+                  "  console.warn('เก็บ webhook secret ใน secret manager ทันที ระบบจะแสดงเพียงครั้งเดียว');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Partner receiver\",\n  \"targetUrl\": \"{{webhookUrl}}\",\n  \"events\": [\n    \"complaint.created\",\n    \"complaint.status_changed\",\n    \"complaint.closed\"\n  ]\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/webhooks"
+          }
+        },
+        {
+          "name": "List webhooks",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/webhooks" }
+        },
+        {
+          "name": "Delete webhook",
+          "request": { "method": "DELETE", "url": "{{baseUrl}}/api/v1/webhooks/{{webhookId}}" }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    { "key": "baseUrl", "value": "https://sandbox.example.go.th" },
+    { "key": "apiKey", "value": "" }
+  ]
+}

@@ -10,6 +10,8 @@ public interface IComplaintService
     Task UpdateStatusAsync(int id, string newStatus, int actorId, string? note, CancellationToken ct = default);
     Task ClaimAsync(int id, int staffId, CancellationToken ct = default);
     Task TransferAsync(int id, int toOfficerId, string reason, int actorId, CancellationToken ct = default);
+    Task UpdateClassificationAsync(int id, int categoryId, int? subCategoryId,
+        string? responsibleDepartment, int actorId, CancellationToken ct = default);
     Task CloseAsync(int id, string resolutionNote, int actorId, CancellationToken ct = default);
     Task ReopenAsync(int id, int actorId, CancellationToken ct = default);
     Task<IReadOnlyList<Models.Complaint>> GetQueueAsync(ComplaintQueueFilter filter, CancellationToken ct = default);
@@ -34,7 +36,12 @@ public record SubmitComplaintRequest(
     IReadOnlyList<IFormFile> Attachments,
     string Channel = "Web",
     double? Latitude = null,
-    double? Longitude = null
+    double? Longitude = null,
+    int? SourcePartnerId = null,
+    string? ExternalSystem = null,
+    string? ExternalId = null,
+    string? ReporterPrivacyChoice = null,
+    string? SubmissionPurpose = null
 );
 
 public record ComplaintQueueFilter(

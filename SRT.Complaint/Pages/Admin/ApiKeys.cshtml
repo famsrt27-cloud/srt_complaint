@@ -1,217 +1,418 @@
 @page
 @model SRT.Complaint.Pages.Admin.ApiKeysModel
 @{
-    ViewData["Title"] = "API Keys";
+    ViewData["Title"] = "API Partners & Keys";
 }
 
-<!-- ══ Show New Raw Key Once ══ -->
-@if (TempData["NewRawKey"] is string rawKey)
+<div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between mb-6">
+    <div>
+        <p class="text-xs font-semibold uppercase tracking-wider text-blue-700 mb-1">Developer portal</p>
+        <h1 class="text-2xl font-bold text-gray-900">API Partners & Keys</h1>
+        <p class="text-sm text-gray-500 mt-1">จัดการระบบคู่เชื่อมต่อ สิทธิ์ ขอบเขตข้อมูล และวงจรชีวิตของ API Key</p>
+    </div>
+    <div class="flex flex-wrap gap-2">
+        <a href="~/openapi/v1.json" target="_blank" rel="noopener"
+           class="min-h-11 inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-srt-navy">
+            OpenAPI v1
+        </a>
+        <a asp-page="/Admin/Webhooks"
+           class="min-h-11 inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-srt-navy">
+            ดู Webhooks
+        </a>
+    </div>
+</div>
+
+@if (TempData["Success"] is string success)
 {
-    <div class="bg-green-50 border border-green-300 rounded-xl p-5 mb-5">
+    <div role="status" class="mb-5 rounded-xl border border-green-200 bg-green-50 p-4 text-sm text-green-800">@success</div>
+}
+@if (TempData["Error"] is string error)
+{
+    <div role="alert" class="mb-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">@error</div>
+}
+
+@if (!string.IsNullOrEmpty(Model.NewRawKey))
+{
+    <section aria-labelledby="new-key-title" class="mb-6 rounded-2xl border-2 border-green-300 bg-green-50 p-5 shadow-sm">
         <div class="flex items-start gap-3">
-            <svg class="w-5 h-5 text-green-600 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
-            </svg>
-            <div class="flex-1">
-                <p class="text-sm font-semibold text-green-800 mb-2">
-                    สร้าง "@TempData["NewKeyName"]" เรียบร้อย — <strong>คัดลอก Key นี้ไว้ก่อน จะไม่สามารถดูได้อีก</strong>
-                </p>
-                <div class="flex items-center gap-2 bg-white border border-green-200 rounded-lg px-4 py-2.5">
-                    <code id="rawKeyText" class="font-mono text-sm text-gray-800 flex-1 break-all select-all">@rawKey</code>
-                    <button type="button"
-                            onclick="navigator.clipboard.writeText(document.getElementById('rawKeyText').textContent); this.textContent='คัดลอกแล้ว ✓'"
-                            class="text-xs text-green-700 font-medium hover:text-green-900 shrink-0 whitespace-nowrap">
-                        คัดลอก
+            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-green-100 text-green-700" aria-hidden="true">
+                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+            </div>
+            <div class="min-w-0 flex-1">
+                <h2 id="new-key-title" class="font-semibold text-green-900">API Key ใหม่: @Model.NewRawKeyName</h2>
+                <p class="mt-1 text-sm text-green-800">คีย์จะแสดงเพียงครั้งเดียว กรุณาเก็บใน Secret Manager และอย่าส่งผ่านอีเมลหรือแชต</p>
+                <div class="mt-4 flex flex-col gap-2 rounded-xl border border-green-200 bg-white p-3 sm:flex-row sm:items-center">
+                    <code id="rawKeyText" class="min-w-0 flex-1 break-all font-mono text-sm text-gray-900">@Model.NewRawKey</code>
+                    <button type="button" id="copyRawKey"
+                            class="min-h-11 shrink-0 rounded-lg bg-green-700 px-4 py-2 text-sm font-semibold text-white hover:bg-green-800 focus:outline-none focus:ring-2 focus:ring-green-600 focus:ring-offset-2">
+                        คัดลอกคีย์
                     </button>
                 </div>
+                <p id="copyStatus" class="mt-2 min-h-5 text-sm font-medium text-green-800" aria-live="polite"></p>
             </div>
         </div>
-    </div>
+    </section>
 }
 
-<!-- ══ API Keys Table ══ -->
-<div class="overflow-x-auto rounded-xl border border-gray-200 shadow-sm bg-white mb-6">
-    <table class="w-full text-sm border-collapse">
-        <thead>
-            <tr class="bg-gray-50 text-gray-600 text-left text-xs">
-                <th class="px-4 py-3 font-semibold border-b border-gray-200">ชื่อ / Prefix</th>
-                <th class="px-4 py-3 font-semibold border-b border-gray-200">ประเภท</th>
-                <th class="px-4 py-3 font-semibold border-b border-gray-200">Scopes</th>
-                <th class="px-4 py-3 font-semibold border-b border-gray-200">Rate Limit</th>
-                <th class="px-4 py-3 font-semibold border-b border-gray-200">IP Whitelist</th>
-                <th class="px-4 py-3 font-semibold border-b border-gray-200">หมดอายุ</th>
-                <th class="px-4 py-3 font-semibold border-b border-gray-200">ใช้ล่าสุด</th>
-                <th class="px-4 py-3 font-semibold border-b border-gray-200">สถานะ</th>
-                <th class="px-4 py-3 border-b border-gray-200 w-28"></th>
-            </tr>
-        </thead>
-        <tbody>
-            @if (!Model.Keys.Any())
-            {
-                <tr>
-                    <td colspan="9" class="px-4 py-12 text-center text-gray-400 text-sm">ยังไม่มี API Key</td>
-                </tr>
-            }
-            @foreach (var k in Model.Keys)
-            {
-                <tr class="hover:bg-gray-50/50 border-b border-gray-100 last:border-b-0 @(!k.IsActive ? "opacity-50" : "")">
-                    <td class="px-4 py-3">
-                        <div class="font-medium text-gray-900">@k.Name</div>
-                        <div class="font-mono text-xs text-gray-400">@k.KeyPrefix…</div>
-                    </td>
-                    <td class="px-4 py-3">
-                        <span class="px-2 py-0.5 rounded-full text-xs font-medium
-                            @(k.KeyType == "Internal" ? "bg-blue-100 text-blue-800" : "bg-gray-100 text-gray-700")">
-                            @k.KeyType
-                        </span>
-                    </td>
-                    <td class="px-4 py-3">
-                        <div class="flex flex-wrap gap-1">
-                            @foreach (var scope in k.Scopes)
-                            {
-                                <span class="px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-indigo-50 text-indigo-700 border border-indigo-100">
-                                    @scope.Scope
-                                </span>
-                            }
-                        </div>
-                    </td>
-                    <td class="px-4 py-3 text-xs text-gray-600">@k.RateLimitPerMin req/min</td>
-                    <td class="px-4 py-3 text-xs text-gray-500 font-mono">
-                        @if (string.IsNullOrEmpty(k.AllowedIps))
-                        {
-                            <span class="text-gray-300">*</span>
-                        }
-                        else
-                        {
-                            @k.AllowedIps
-                        }
-                    </td>
-                    <td class="px-4 py-3 text-xs text-gray-500">
-                        @if (k.ExpiresAt.HasValue)
-                        {
-                            @k.ExpiresAt.Value.ToLocalTime().ToString("dd/MM/yy")
-                        }
-                        else
-                        {
-                            <span class="text-gray-300">ไม่มี</span>
-                        }
-                    </td>
-                    <td class="px-4 py-3 text-xs text-gray-400">
-                        @(k.LastUsedAt.HasValue ? k.LastUsedAt.Value.ToLocalTime().ToString("dd/MM/yy HH:mm") : "—")
-                    </td>
-                    <td class="px-4 py-3">
-                        @if (k.IsActive)
-                        {
-                            <span class="flex items-center gap-1 text-xs text-green-700">
-                                <span class="w-1.5 h-1.5 rounded-full bg-green-500"></span> ใช้งานได้
-                            </span>
-                        }
-                        else
-                        {
-                            <span class="flex items-center gap-1 text-xs text-red-600">
-                                <span class="w-1.5 h-1.5 rounded-full bg-red-400"></span> ยกเลิกแล้ว
-                            </span>
-                            @if (!string.IsNullOrEmpty(k.RevokedReason))
-                            {
-                                <div class="text-[10px] text-gray-400 mt-0.5 max-w-[100px] truncate" title="@k.RevokedReason">
-                                    @k.RevokedReason
-                                </div>
-                            }
-                        }
-                    </td>
-                    <td class="px-4 py-3">
-                        <div class="flex items-center gap-2">
-                        <a asp-page="/Admin/ApiKeyUsage" asp-route-keyId="@k.Id"
-                           class="text-xs text-srt-navy hover:underline font-medium">Usage</a>
-                        @if (k.IsActive)
-                        {
-                            <details class="relative">
-                                <summary class="text-xs text-red-600 hover:text-red-800 cursor-pointer list-none font-medium">ยกเลิก</summary>
-                                <div class="absolute right-0 top-6 z-10 bg-white border border-gray-200 rounded-xl shadow-lg p-4 w-64">
-                                    <form method="post" asp-page-handler="Revoke">
-                                        @Html.AntiForgeryToken()
-                                        <input type="hidden" name="RevokeId" value="@k.Id" />
-                                        <p class="text-xs font-medium text-gray-700 mb-2">ยกเลิก "@k.Name"</p>
-                                        <textarea name="RevokeReason" required rows="2" placeholder="ระบุเหตุผล..."
-                                                  class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-2 focus:outline-none focus:border-red-400 resize-none"></textarea>
-                                        <button type="submit"
-                                                onclick="return confirm('ยืนยันยกเลิก API Key นี้?')"
-                                                class="w-full bg-red-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-red-700 transition">
-                                            ยืนยันยกเลิก
-                                        </button>
-                                    </form>
-                                </div>
-                            </details>
-                        }
-                        </div>
-                    </td>
-                </tr>
-            }
-        </tbody>
-    </table>
+<div class="grid grid-cols-2 gap-3 lg:grid-cols-4 mb-6">
+    <div class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+        <p class="text-xs font-medium text-gray-500">Partner ที่ใช้งาน</p>
+        <p class="mt-1 text-2xl font-bold text-gray-900">@Model.PartnerCount</p>
+    </div>
+    <div class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+        <p class="text-xs font-medium text-gray-500">คีย์ใช้งานได้</p>
+        <p class="mt-1 text-2xl font-bold text-green-700">@Model.ActiveCount</p>
+    </div>
+    <div class="rounded-xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
+        <p class="text-xs font-medium text-amber-700">หมดอายุใน 30 วัน</p>
+        <p class="mt-1 text-2xl font-bold text-amber-800">@Model.ExpiringCount</p>
+    </div>
+    <div class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+        <p class="text-xs font-medium text-gray-500">ยังไม่เคยใช้</p>
+        <p class="mt-1 text-2xl font-bold text-gray-900">@Model.NeverUsedCount</p>
+    </div>
 </div>
 
-<!-- ══ Create New API Key ══ -->
-<div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-    <h2 class="text-sm font-semibold text-gray-900 mb-4">สร้าง API Key ใหม่</h2>
-    <form method="post" asp-page-handler="Create" class="space-y-4">
+<details class="mb-6 rounded-xl border border-gray-200 bg-white shadow-sm">
+    <summary class="min-h-12 cursor-pointer list-none px-5 py-4 text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-srt-navy">
+        + เพิ่ม Partner ใหม่
+    </summary>
+    <form method="post" asp-page-handler="CreatePartner" class="border-t border-gray-100 p-5">
         @Html.AntiForgeryToken()
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div class="lg:col-span-2">
-                <label class="block text-xs font-medium text-gray-600 mb-1">ชื่อ API Key <span class="text-red-500">*</span></label>
-                <input name="NewName" required placeholder="เช่น ระบบ eDOC ฝ่ายพาณิชย์"
-                       class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-srt-navy" />
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <div>
+                <label for="PartnerCode" class="block text-sm font-medium text-gray-700">รหัสระบบ <span class="text-red-600">*</span></label>
+                <input id="PartnerCode" name="PartnerCode" required maxlength="50" pattern="[A-Za-z0-9][A-Za-z0-9_-]{1,49}" placeholder="เช่น EDOC"
+                       class="mt-1 min-h-11 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm uppercase focus:border-srt-navy focus:outline-none focus:ring-2 focus:ring-srt-navy/20" />
+                <p class="mt-1 text-xs text-gray-500">ใช้เป็นรหัสอ้างอิงถาวร เปลี่ยนภายหลังไม่ควรทำ</p>
             </div>
             <div>
-                <label class="block text-xs font-medium text-gray-600 mb-1">ประเภท</label>
-                <select name="NewKeyType"
-                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-srt-navy">
-                    <option value="External">External</option>
-                    <option value="Internal">Internal</option>
-                </select>
+                <label for="PartnerName" class="block text-sm font-medium text-gray-700">ชื่อหน่วยงาน/ระบบ <span class="text-red-600">*</span></label>
+                <input id="PartnerName" name="PartnerName" required maxlength="200" placeholder="ระบบสารบรรณอิเล็กทรอนิกส์"
+                       class="mt-1 min-h-11 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-srt-navy focus:outline-none focus:ring-2 focus:ring-srt-navy/20" />
             </div>
             <div>
-                <label class="block text-xs font-medium text-gray-600 mb-1">Rate Limit (req/min)</label>
-                <input name="NewRateLimit" type="number" value="60" min="1" max="3600"
-                       class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-srt-navy" />
+                <label for="PartnerContactName" class="block text-sm font-medium text-gray-700">ผู้ประสานงาน</label>
+                <input id="PartnerContactName" name="PartnerContactName" maxlength="200"
+                       class="mt-1 min-h-11 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-srt-navy focus:outline-none focus:ring-2 focus:ring-srt-navy/20" />
+            </div>
+            <div>
+                <label for="PartnerContactEmail" class="block text-sm font-medium text-gray-700">อีเมล</label>
+                <input id="PartnerContactEmail" name="PartnerContactEmail" type="email" maxlength="200"
+                       class="mt-1 min-h-11 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-srt-navy focus:outline-none focus:ring-2 focus:ring-srt-navy/20" />
+            </div>
+            <div>
+                <label for="PartnerContactPhone" class="block text-sm font-medium text-gray-700">โทรศัพท์</label>
+                <input id="PartnerContactPhone" name="PartnerContactPhone" maxlength="50"
+                       class="mt-1 min-h-11 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-srt-navy focus:outline-none focus:ring-2 focus:ring-srt-navy/20" />
             </div>
         </div>
-
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-                <label class="block text-xs font-medium text-gray-600 mb-1">IP Whitelist <span class="text-gray-400">(เว้นว่างไว้ = ทุก IP)</span></label>
-                <input name="NewAllowedIps" placeholder="เช่น 192.168.1.0/24, 10.0.0.1"
-                       class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-srt-navy" />
-            </div>
-            <div>
-                <label class="block text-xs font-medium text-gray-600 mb-1">วันหมดอายุ <span class="text-gray-400">(ไม่ระบุ = ไม่มีวันหมดอายุ)</span></label>
-                <input name="NewExpiresAt" type="date"
-                       min="@DateTime.Today.AddDays(1).ToString("yyyy-MM-dd")"
-                       data-datepicker
-                       class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-srt-navy" />
-            </div>
-        </div>
-
-        <div>
-            <label class="block text-xs font-medium text-gray-600 mb-2">Scopes <span class="text-red-500">*</span></label>
-            <div class="flex flex-wrap gap-3">
-                @foreach (var scope in ApiKeysModel.AvailableScopes)
-                {
-                    <label class="flex items-center gap-2 cursor-pointer select-none
-                                  border border-gray-200 rounded-lg px-3 py-2 hover:border-srt-navy/40 transition">
-                        <input type="checkbox" name="NewScopes" value="@scope"
-                               class="w-4 h-4 rounded border-gray-300 text-srt-navy focus:ring-srt-navy" />
-                        <span class="font-mono text-xs text-gray-700">@scope</span>
-                    </label>
-                }
-            </div>
-        </div>
-
-        <div class="flex justify-end pt-2 border-t border-gray-100">
-            <button type="submit"
-                    class="bg-srt-navy text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-srt-navy-dark transition">
-                สร้าง API Key
-            </button>
+        <div class="mt-4 flex justify-end">
+            <button type="submit" class="min-h-11 rounded-lg bg-srt-navy px-5 py-2 text-sm font-semibold text-white hover:bg-srt-navy-dark focus:outline-none focus:ring-2 focus:ring-srt-navy focus:ring-offset-2">บันทึก Partner</button>
         </div>
     </form>
-</div>
+</details>
+
+<section aria-labelledby="keys-title" class="mb-6">
+    <div class="mb-3 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+            <h2 id="keys-title" class="text-lg font-semibold text-gray-900">API Keys</h2>
+            <p class="text-sm text-gray-500">หนึ่ง Partner สามารถมีหลายคีย์ได้ แต่ควรแยก Sandbox และ Production</p>
+        </div>
+        <form method="get" class="grid grid-cols-1 gap-2 sm:grid-cols-3" aria-label="ตัวกรอง API Keys">
+            <label class="sr-only" for="Search">ค้นหา</label>
+            <input id="Search" asp-for="Search" placeholder="ค้นหา Partner, ชื่อ, Prefix"
+                   class="min-h-11 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-srt-navy focus:outline-none focus:ring-2 focus:ring-srt-navy/20" />
+            <label class="sr-only" for="Status">สถานะ</label>
+            <select id="Status" asp-for="Status" class="min-h-11 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-srt-navy focus:outline-none">
+                <option value="">ทุกสถานะ</option>
+                <option value="active">ใช้งานได้</option>
+                <option value="expiring">ใกล้หมดอายุ</option>
+                <option value="expired">หมดอายุ</option>
+                <option value="revoked">ยกเลิกแล้ว</option>
+            </select>
+            <div class="flex gap-2">
+                <label class="sr-only" for="EnvironmentFilter">Environment</label>
+                <select id="EnvironmentFilter" asp-for="EnvironmentFilter" class="min-h-11 min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-srt-navy focus:outline-none">
+                    <option value="">ทุก Environment</option>
+                    <option value="Sandbox">Sandbox</option>
+                    <option value="Production">Production</option>
+                </select>
+                <button type="submit" class="min-h-11 rounded-lg border border-gray-300 bg-white px-4 text-sm font-medium hover:bg-gray-50">กรอง</button>
+            </div>
+        </form>
+    </div>
+
+    @if (!Model.Keys.Any())
+    {
+        <div class="rounded-xl border border-dashed border-gray-300 bg-white px-5 py-12 text-center text-sm text-gray-500">ไม่พบ API Key ตามเงื่อนไข</div>
+    }
+    <div class="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        @foreach (var key in Model.Keys)
+        {
+            var status = ApiKeysModel.GetStatus(key);
+            var statusText = status switch { "active" => "ใช้งานได้", "expiring" => "ใกล้หมดอายุ", "expired" => "หมดอายุ", _ => "ยกเลิกแล้ว" };
+            var statusClass = status switch { "active" => "bg-green-100 text-green-800", "expiring" => "bg-amber-100 text-amber-800", "expired" => "bg-gray-200 text-gray-700", _ => "bg-red-100 text-red-800" };
+            <article class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm @(status is "expired" or "revoked" ? "opacity-75" : "")">
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div class="min-w-0">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <h3 class="font-semibold text-gray-900">@key.Name</h3>
+                            <span class="rounded-full px-2 py-1 text-xs font-semibold @statusClass">@statusText</span>
+                            <span class="rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">@key.Environment</span>
+                        </div>
+                        <p class="mt-1 text-sm text-gray-600"><span class="font-medium">@key.Partner.Name</span> · <span class="font-mono text-xs">@key.Partner.Code</span></p>
+                        <p class="mt-1 font-mono text-xs text-gray-400">@key.KeyPrefix…</p>
+                    </div>
+                    <a asp-page="/Admin/ApiKeyUsage" asp-route-keyId="@key.Id" class="min-h-11 inline-flex items-center text-sm font-semibold text-srt-navy hover:underline">ดู Usage</a>
+                </div>
+
+                <dl class="mt-4 grid grid-cols-2 gap-3 border-y border-gray-100 py-4 text-sm sm:grid-cols-4">
+                    <div><dt class="text-xs text-gray-500">ขอบเขตข้อมูล</dt><dd class="mt-1 font-medium">@(key.DataAccessMode == "Own" ? "เฉพาะ Partner" : "ข้อมูลทั้งหมด")</dd></div>
+                    <div><dt class="text-xs text-gray-500">Rate limit</dt><dd class="mt-1 font-medium">@key.RateLimitPerMin / นาที</dd></div>
+                    <div><dt class="text-xs text-gray-500">หมดอายุ</dt><dd class="mt-1 font-medium">@(key.ExpiresAt?.ToLocalTime().ToString("dd/MM/yyyy") ?? "-")</dd></div>
+                    <div><dt class="text-xs text-gray-500">ใช้ล่าสุด</dt><dd class="mt-1 font-medium">@(key.LastUsedAt?.ToLocalTime().ToString("dd/MM/yy HH:mm") ?? "ไม่เคยใช้")</dd></div>
+                </dl>
+
+                <div class="mt-3 flex flex-wrap gap-1.5">
+                    @foreach (var scope in key.Scopes)
+                    {
+                        <span class="rounded-md border border-indigo-100 bg-indigo-50 px-2 py-1 font-mono text-[11px] text-indigo-700">@scope.Scope</span>
+                    }
+                </div>
+                <p class="mt-3 text-xs text-gray-500">IP: @(string.IsNullOrWhiteSpace(key.AllowedIps) ? "ทุก IP (ควรจำกัดใน Production)" : key.AllowedIps)</p>
+
+                @if (status is "active" or "expiring")
+                {
+                    <div class="mt-4 flex flex-wrap items-start justify-end gap-2 border-t border-gray-100 pt-4">
+                        <form method="post" asp-page-handler="Rotate" onsubmit="return confirm('สร้างคีย์ใหม่และให้คีย์เดิมใช้ต่อได้อีก 7 วัน?')">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="RotateId" value="@key.Id" />
+                            <button type="submit" class="min-h-11 rounded-lg border border-amber-300 bg-amber-50 px-4 text-sm font-medium text-amber-800 hover:bg-amber-100">Rotate Key</button>
+                        </form>
+                        <details class="relative">
+                            <summary class="min-h-11 cursor-pointer list-none rounded-lg border border-red-200 px-4 py-3 text-sm font-medium text-red-700 hover:bg-red-50">ยกเลิกคีย์</summary>
+                            <div class="absolute right-0 top-12 z-20 w-72 rounded-xl border border-gray-200 bg-white p-4 shadow-xl">
+                                <form method="post" asp-page-handler="Revoke">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="RevokeId" value="@key.Id" />
+                                    <label for="reason-@key.Id" class="block text-sm font-medium text-gray-800">เหตุผลในการยกเลิก</label>
+                                    <textarea id="reason-@key.Id" name="RevokeReason" required maxlength="500" rows="3" class="mt-1 w-full rounded-lg border border-gray-300 p-2 text-sm focus:border-red-500 focus:outline-none"></textarea>
+                                    <p class="mt-1 text-xs text-red-700">ระบบคู่เชื่อมต่อจะเรียก API ไม่ได้ทันที</p>
+                                    <button type="submit" class="mt-3 min-h-11 w-full rounded-lg bg-red-600 px-3 text-sm font-semibold text-white hover:bg-red-700">ยืนยันยกเลิก</button>
+                                </form>
+                            </div>
+                        </details>
+                    </div>
+                }
+            </article>
+        }
+    </div>
+</section>
+
+<section aria-labelledby="create-key-title" class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6">
+    <div class="mb-5">
+        <h2 id="create-key-title" class="text-lg font-semibold text-gray-900">สร้าง API Key ใหม่</h2>
+        <p class="mt-1 text-sm text-gray-500">ตรวจสอบ Partner, สิทธิ์ และข้อจำกัดก่อนสร้าง ระบบจะแสดงคีย์เพียงครั้งเดียว</p>
+    </div>
+
+    <form method="post" asp-page-handler="Create" id="createKeyForm" novalidate>
+        @Html.AntiForgeryToken()
+        @if (!ViewData.ModelState.IsValid)
+        {
+            <div id="validationSummary" role="alert" tabindex="-1" class="mb-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800" asp-validation-summary="All"></div>
+        }
+
+        <div class="space-y-6">
+            <fieldset class="rounded-xl border border-gray-200 p-4">
+                <legend class="px-2 text-sm font-semibold text-gray-900"><span class="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-srt-navy text-xs text-white">1</span>ข้อมูลระบบ</legend>
+                <div class="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div>
+                        <label asp-for="NewPartnerId" class="block text-sm font-medium text-gray-700">Partner <span class="text-red-600">*</span></label>
+                        <select asp-for="NewPartnerId" required class="mt-1 min-h-11 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-srt-navy focus:outline-none focus:ring-2 focus:ring-srt-navy/20">
+                            <option value="">เลือก Partner</option>
+                            @foreach (var partner in Model.Partners.Where(x => x.IsActive))
+                            {
+                                <option value="@partner.Id">@partner.Name (@partner.Code)</option>
+                            }
+                        </select>
+                        <span asp-validation-for="NewPartnerId" class="mt-1 block text-xs text-red-600"></span>
+                    </div>
+                    <div>
+                        <label asp-for="NewName" class="block text-sm font-medium text-gray-700">ชื่อคีย์ <span class="text-red-600">*</span></label>
+                        <input asp-for="NewName" required maxlength="200" placeholder="เช่น EDOC Production Server"
+                               class="mt-1 min-h-11 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-srt-navy focus:outline-none focus:ring-2 focus:ring-srt-navy/20" />
+                        <span asp-validation-for="NewName" class="mt-1 block text-xs text-red-600"></span>
+                    </div>
+                    <div>
+                        <label asp-for="NewEnvironment" class="block text-sm font-medium text-gray-700">Environment</label>
+                        <select asp-for="NewEnvironment" class="mt-1 min-h-11 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-srt-navy focus:outline-none">
+                            @if (Model.RuntimeEnvironment == "Sandbox")
+                            {
+                                <option value="Sandbox">Sandbox — ทดสอบ (Instance นี้)</option>
+                            }
+                            else if (Model.RuntimeEnvironment == "Production")
+                            {
+                                <option value="Production">Production — ใช้งานจริง (Instance นี้)</option>
+                            }
+                            else
+                            {
+                                <option value="Sandbox">Sandbox — ทดสอบ</option>
+                                <option value="Production">Production — ใช้งานจริง</option>
+                            }
+                        </select>
+                        @if (Model.RuntimeEnvironment != null)
+                        {
+                            <p class="mt-1 text-xs text-gray-500">ระบบล็อกคีย์ให้ตรงกับ @Model.RuntimeEnvironment environment</p>
+                        }
+                    </div>
+                    <div>
+                        <label asp-for="NewKeyType" class="block text-sm font-medium text-gray-700">ประเภทระบบ</label>
+                        <select asp-for="NewKeyType" id="NewKeyType" class="mt-1 min-h-11 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-srt-navy focus:outline-none">
+                            <option value="External">External — ระบบภายนอก</option>
+                            <option value="Internal">Internal — ระบบภายใน</option>
+                        </select>
+                    </div>
+                    <div class="md:col-span-2">
+                        <label asp-for="NewPurpose" class="block text-sm font-medium text-gray-700">วัตถุประสงค์</label>
+                        <textarea asp-for="NewPurpose" maxlength="500" rows="2" placeholder="อธิบายว่าระบบนี้จะรับหรือส่งข้อมูลอะไร"
+                                  class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-srt-navy focus:outline-none focus:ring-2 focus:ring-srt-navy/20"></textarea>
+                    </div>
+                </div>
+            </fieldset>
+
+            <fieldset class="rounded-xl border border-gray-200 p-4">
+                <legend class="px-2 text-sm font-semibold text-gray-900"><span class="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-srt-navy text-xs text-white">2</span>สิทธิ์และขอบเขตข้อมูล</legend>
+                <div class="mt-3">
+                    <p class="text-sm font-medium text-gray-700">ชุดสิทธิ์สำเร็จรูป</p>
+                    <div class="mt-2 flex flex-wrap gap-2" role="group" aria-label="ชุดสิทธิ์สำเร็จรูป">
+                        <button type="button" data-preset="submit" class="min-h-11 rounded-lg border border-gray-300 px-3 text-sm hover:border-srt-navy hover:bg-blue-50">ส่งเรื่องอย่างเดียว</button>
+                        <button type="button" data-preset="track" class="min-h-11 rounded-lg border border-gray-300 px-3 text-sm hover:border-srt-navy hover:bg-blue-50">ส่งและติดตาม</button>
+                        <button type="button" data-preset="twoway" class="min-h-11 rounded-lg border border-gray-300 px-3 text-sm hover:border-srt-navy hover:bg-blue-50">เชื่อมต่อสองทาง</button>
+                        <button type="button" data-preset="report" class="min-h-11 rounded-lg border border-gray-300 px-3 text-sm hover:border-srt-navy hover:bg-blue-50">รายงานสถิติ</button>
+                    </div>
+                </div>
+                <div class="mt-4 grid grid-cols-1 gap-2 md:grid-cols-2">
+                    @foreach (var scope in ApiKeysModel.AvailableScopes)
+                    {
+                        <label class="flex cursor-pointer items-start gap-3 rounded-lg border border-gray-200 p-3 hover:border-srt-navy/50">
+                            @if (Model.NewScopes.Contains(scope.Value))
+                            {
+                                <input type="checkbox" name="NewScopes" value="@scope.Value" data-scope="@scope.Value" data-group="@scope.Group"
+                                       checked
+                                       class="mt-1 h-4 w-4 rounded border-gray-300 text-srt-navy focus:ring-srt-navy" />
+                            }
+                            else
+                            {
+                                <input type="checkbox" name="NewScopes" value="@scope.Value" data-scope="@scope.Value" data-group="@scope.Group"
+                                       class="mt-1 h-4 w-4 rounded border-gray-300 text-srt-navy focus:ring-srt-navy" />
+                            }
+                            <span><span class="block text-sm font-medium text-gray-800">@scope.Label</span><span class="block text-xs text-gray-500">@scope.Description · <code>@scope.Value</code></span></span>
+                        </label>
+                    }
+                </div>
+                <span asp-validation-for="NewScopes" class="mt-2 block text-xs text-red-600"></span>
+                <div class="mt-4">
+                    <label asp-for="NewDataAccessMode" class="block text-sm font-medium text-gray-700">ขอบเขตข้อมูล</label>
+                    <select asp-for="NewDataAccessMode" id="NewDataAccessMode" class="mt-1 min-h-11 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-srt-navy focus:outline-none md:w-1/2">
+                        <option value="Own">เฉพาะเรื่องของ Partner นี้</option>
+                        <option value="All">ข้อมูลทั้งหมด — Internal เท่านั้น</option>
+                    </select>
+                    <p id="dataAccessHint" class="mt-1 text-xs text-gray-500">แนะนำให้ใช้ “เฉพาะเรื่องของ Partner นี้” ตามหลักสิทธิ์ขั้นต่ำ</p>
+                </div>
+            </fieldset>
+
+            <fieldset class="rounded-xl border border-gray-200 p-4">
+                <legend class="px-2 text-sm font-semibold text-gray-900"><span class="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-srt-navy text-xs text-white">3</span>ข้อจำกัดด้านความปลอดภัย</legend>
+                <div class="mt-3 grid grid-cols-1 gap-4 md:grid-cols-3">
+                    <div>
+                        <label asp-for="NewExpiresAt" class="block text-sm font-medium text-gray-700">วันหมดอายุ <span class="text-red-600">*</span></label>
+                        <input asp-for="NewExpiresAt" type="date" required min="@DateTime.Today.AddDays(1).ToString("yyyy-MM-dd")" max="@DateTime.Today.AddDays(366).ToString("yyyy-MM-dd")"
+                               class="mt-1 min-h-11 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-srt-navy focus:outline-none" />
+                        <span asp-validation-for="NewExpiresAt" class="mt-1 block text-xs text-red-600"></span>
+                    </div>
+                    <div>
+                        <label asp-for="NewRateLimit" class="block text-sm font-medium text-gray-700">Rate limit / นาที</label>
+                        <input asp-for="NewRateLimit" type="number" min="1" max="3600" required
+                               class="mt-1 min-h-11 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-srt-navy focus:outline-none" />
+                        <span asp-validation-for="NewRateLimit" class="mt-1 block text-xs text-red-600"></span>
+                    </div>
+                    <div>
+                        <label asp-for="NewAllowedIps" class="block text-sm font-medium text-gray-700">IP whitelist</label>
+                        <input asp-for="NewAllowedIps" placeholder="203.0.113.10, 198.51.100.0/24"
+                               class="mt-1 min-h-11 w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-sm focus:border-srt-navy focus:outline-none" />
+                        <p class="mt-1 text-xs text-gray-500">คั่นหลายรายการด้วยเครื่องหมายจุลภาค</p>
+                    </div>
+                </div>
+            </fieldset>
+
+            <div class="rounded-xl border border-blue-200 bg-blue-50 p-4">
+                <h3 class="text-sm font-semibold text-blue-900"><span class="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-srt-navy text-xs text-white">4</span>ตรวจสอบก่อนสร้าง</h3>
+                <p class="mt-2 text-sm text-blue-800">หลังสร้างแล้วจะเปลี่ยน Partner, Environment, Scope และขอบเขตข้อมูลไม่ได้ หากต้องการเปลี่ยนให้สร้างคีย์ใหม่แล้ว Rotate คีย์เดิม</p>
+            </div>
+        </div>
+
+        <div class="mt-6 flex justify-end border-t border-gray-100 pt-5">
+            <button id="createKeyButton" type="submit" class="min-h-11 rounded-lg bg-srt-navy px-6 py-2 text-sm font-semibold text-white hover:bg-srt-navy-dark focus:outline-none focus:ring-2 focus:ring-srt-navy focus:ring-offset-2 disabled:cursor-wait disabled:opacity-60">สร้าง API Key</button>
+        </div>
+    </form>
+</section>
+
+<script>
+(() => {
+    const presets = {
+        submit: ['metadata:read', 'complaints:write'],
+        track: ['metadata:read', 'complaints:write', 'complaints:status'],
+        twoway: ['metadata:read', 'complaints:write', 'complaints:status', 'complaints:read', 'complaints:update', 'webhooks:manage'],
+        report: ['metadata:read', 'stats:summary', 'stats:detailed']
+    };
+    document.querySelectorAll('[data-preset]').forEach(button => button.addEventListener('click', () => {
+        const selected = presets[button.dataset.preset] || [];
+        document.querySelectorAll('[data-scope]').forEach(input => input.checked = selected.includes(input.value));
+        document.querySelectorAll('[data-preset]').forEach(item => item.classList.remove('border-srt-navy', 'bg-blue-50'));
+        button.classList.add('border-srt-navy', 'bg-blue-50');
+    }));
+
+    const keyType = document.getElementById('NewKeyType');
+    const access = document.getElementById('NewDataAccessMode');
+    const sensitive = document.querySelector('[data-scope="corruption:stats"]');
+    function enforceKeyType() {
+        const external = keyType?.value === 'External';
+        if (access) {
+            access.querySelector('option[value="All"]').disabled = external;
+            if (external && access.value === 'All') access.value = 'Own';
+        }
+        if (sensitive) {
+            sensitive.disabled = external;
+            if (external) sensitive.checked = false;
+            sensitive.closest('label')?.classList.toggle('opacity-50', external);
+        }
+    }
+    keyType?.addEventListener('change', enforceKeyType);
+    enforceKeyType();
+
+    document.getElementById('copyRawKey')?.addEventListener('click', async event => {
+        const status = document.getElementById('copyStatus');
+        try {
+            await navigator.clipboard.writeText(document.getElementById('rawKeyText').textContent.trim());
+            event.currentTarget.textContent = 'คัดลอกแล้ว';
+            status.textContent = 'คัดลอกสำเร็จ กรุณาเก็บใน Secret Manager ก่อนออกจากหน้านี้';
+        } catch {
+            status.textContent = 'คัดลอกอัตโนมัติไม่ได้ กรุณาเลือกข้อความแล้วคัดลอกด้วยตนเอง';
+        }
+    });
+
+    const form = document.getElementById('createKeyForm');
+    form?.addEventListener('submit', event => {
+        if (!form.checkValidity()) {
+            event.preventDefault();
+            form.reportValidity();
+            return;
+        }
+        const button = document.getElementById('createKeyButton');
+        button.disabled = true;
+        button.textContent = 'กำลังสร้าง…';
+    });
+    document.getElementById('validationSummary')?.focus();
+})();
+</script>

@@ -106,8 +106,11 @@
         }
         .btn-action:hover  { filter: brightness(1.07); transform: translateY(-1px); }
         .btn-action:active { transform: translateY(0); filter: brightness(.97); }
-        .btn-green { background: #3baa45; }
-        .btn-teal  { background: #0d9396; }
+        .btn-action:focus-visible { outline: 3px solid #0d2e6e; outline-offset: 3px; }
+        .btn-green { background: #3baa45; color: #052e16; }
+        .btn-orange { background: #c2410c; }
+        .btn-yellow { background: #f2c94c; color: #332600; }
+        .btn-blue { background: #2563a8; }
 
         /* ── Info divider ── */
         .info-divider {
@@ -537,13 +540,13 @@
             <a asp-page="/Public/Submit" class="btn-action btn-green">
                 ยื่นเรื่อง / ติดตามสถานะร้องเรียน ออนไลน์
             </a>
-            <a asp-page="/Public/SubmitCorruption" class="btn-action btn-teal">
+            <a asp-page="/Public/SubmitCorruption" class="btn-action btn-orange">
                 แจ้งเบาะแสทุจริต (ปิดลับ)
             </a>
-            <a asp-page="/Public/Track" class="btn-action btn-teal">
+            <a asp-page="/Public/Track" class="btn-action btn-yellow">
                 ติดตามสถานะเรื่องร้องเรียน
             </a>
-            <a asp-page="/Staff/Login" class="btn-action btn-teal">
+            <a asp-page="/Staff/Login" class="btn-action btn-blue">
                 เข้าสู่ระบบเจ้าหน้าที่
             </a>
         </div>

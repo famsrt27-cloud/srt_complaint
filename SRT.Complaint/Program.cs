@@ -1,12 +1,14 @@
-using System.Text;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.IdentityModel.Tokens;
+using Microsoft.Extensions.Options;
 using Serilog;
 using SRT.Complaint.Data;
 using SRT.Complaint.Filters;
+using SRT.Complaint.OpenApi;
 using SRT.Complaint.Services;
+using System.Net;
 using System.Threading.RateLimiting;
 
 Log.Logger = new LoggerConfiguration()
@@ -47,21 +49,6 @@ try
         options.Cookie.SameSite = SameSiteMode.Strict;
         options.ExpireTimeSpan = TimeSpan.FromHours(1);
         options.SlidingExpiration = true;
-    })
-    .AddJwtBearer(JwtBearerDefaults.AuthenticationScheme, options =>
-    {
-        var jwtSecret = builder.Configuration["Jwt:Secret"];
-        if (string.IsNullOrWhiteSpace(jwtSecret))
-            throw new InvalidOperationException("Jwt:Secret is not configured");
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            ValidateAudience = false,
-            ValidateLifetime = true,
-            ValidateIssuerSigningKey = true,
-            ValidIssuer = builder.Configuration["Jwt:Issuer"],
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret))
-        };
     });
 
     builder.Services.AddAuthorization(options =>
@@ -71,6 +58,21 @@ try
         options.AddPolicy("StaffOnly", policy => policy.RequireRole("GeneralOfficer", "CorruptionOfficer", "SuperAdmin"));
         options.AddPolicy("CorruptionAccess", policy => policy.RequireRole("CorruptionOfficer", "SuperAdmin"));
         options.AddPolicy("SuperAdmin", policy => policy.RequireRole("SuperAdmin"));
+    });
+
+    // Trust forwarded client/protocol headers only from explicitly configured proxies.
+    // This keeps IP allowlists and rate limits from accepting spoofed X-Forwarded-For values.
+    builder.Services.Configure<ForwardedHeadersOptions>(options =>
+    {
+        options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+        options.ForwardLimit = 1;
+        options.KnownNetworks.Clear();
+        options.KnownProxies.Clear();
+        foreach (var value in builder.Configuration.GetSection("ReverseProxy:KnownProxies").Get<string[]>() ?? [])
+        {
+            if (IPAddress.TryParse(value, out var address))
+                options.KnownProxies.Add(address);
+        }
     });
 
     // ──────────── Rate Limiting (partitioned per client IP) ────────────
@@ -126,27 +128,26 @@ try
     builder.Services.AddScoped<ICorruptionService, CorruptionService>();
     builder.Services.AddScoped<IApiKeyService, ApiKeyService>();
     builder.Services.AddScoped<IPdfExportService, PdfExportService>();
+    builder.Services.AddScoped<IPdfSignerSettingsService, PdfSignerSettingsService>();
     builder.Services.AddScoped<IApiRequestLogService, ApiRequestLogService>();
     builder.Services.AddScoped<IWebhookService, WebhookService>();
+    builder.Services.AddScoped<IWebhookUrlValidator, WebhookUrlValidator>();
+    builder.Services.AddScoped<IIdempotencyService, IdempotencyService>();
     builder.Services.AddScoped<ITermsService, TermsService>();
     builder.Services.AddScoped<IContentBlockService, ContentBlockService>();
     builder.Services.AddScoped<ITurnstileService, TurnstileService>();
     builder.Services.AddScoped<IStatsService, StatsService>();
     builder.Services.AddScoped<ICorruptionStatsService, CorruptionStatsService>();
     builder.Services.AddScoped<IExternalSyncService, ExternalSyncService>();
-    builder.Services.AddScoped<ITraffySettingsService, TraffySettingsService>();
+    builder.Services.AddScoped<IEdocIntegrationService, EdocIntegrationService>();
+    builder.Services.AddSingleton<IEdocApiClient, EdocApiClient>();
+    builder.Services.AddSingleton<IValidateOptions<EdocOptions>, EdocOptionsValidator>();
+    builder.Services.AddOptions<EdocOptions>()
+        .Bind(builder.Configuration.GetSection(EdocOptions.SectionName))
+        .ValidateOnStart();
     builder.Services.AddScoped<IStaffUserService, StaffUserService>();
     builder.Services.AddScoped<IStaffDirectoryService, StaffDirectoryService>();
     builder.Services.AddScoped<IDiscordNotifier, DiscordNotifier>();
-    // Registered as its own singleton so IExternalSystemAdapter and IExternalStatusResolver
-    // share the same instance (and therefore the same cached token/status-list state).
-    builder.Services.AddSingleton<SRT.Complaint.Services.Adapters.TraffyFonduAdapter>();
-    builder.Services.AddSingleton<IExternalSystemAdapter>(sp =>
-        sp.GetRequiredService<SRT.Complaint.Services.Adapters.TraffyFonduAdapter>());
-    builder.Services.AddSingleton<IExternalStatusResolver>(sp =>
-        sp.GetRequiredService<SRT.Complaint.Services.Adapters.TraffyFonduAdapter>());
-    builder.Services.AddSingleton<ITraffyConnectionTester>(sp =>
-        sp.GetRequiredService<SRT.Complaint.Services.Adapters.TraffyFonduAdapter>());
     builder.Services.AddSingleton<IExternalSystemAdapter, SRT.Complaint.Services.Adapters.DamrongdhammaAdapter>();
     builder.Services.AddScoped<ApiKeyAuthFilter>();
 
@@ -154,23 +155,67 @@ try
     builder.Services.AddHostedService<SlaBackgroundService>();
     builder.Services.AddHostedService<WebhookRetryService>();
     builder.Services.AddHostedService<ExternalSyncBackgroundService>();
+    builder.Services.AddHostedService<EdocBackgroundService>();
 
     // ──────────── MVC & Razor Pages ────────────
-    builder.Services.AddControllers();
+    builder.Services.AddControllers()
+        .ConfigureApiBehaviorOptions(options =>
+        {
+            options.InvalidModelStateResponseFactory = context =>
+            {
+                var details = context.ModelState
+                    .Where(x => x.Value?.Errors.Count > 0)
+                    .ToDictionary(
+                        x => x.Key,
+                        x => x.Value!.Errors.Select(error =>
+                            string.IsNullOrWhiteSpace(error.ErrorMessage) ? "Invalid value" : error.ErrorMessage).ToArray());
+                return new BadRequestObjectResult(new
+                {
+                    error = new
+                    {
+                        code = "validation_error",
+                        message = "Request validation failed",
+                        details,
+                        traceId = context.HttpContext.TraceIdentifier
+                    }
+                });
+            };
+        });
     builder.Services.AddRazorPages();
+    builder.Services.AddOpenApi("v1", options =>
+    {
+        options.ShouldInclude = description => description.GroupName == "v1";
+        options.AddDocumentTransformer<ApiOpenApiTransformer>();
+    });
 
     // ──────────── HTTP Clients ────────────
     builder.Services.AddHttpClient();
     builder.Services.AddHttpClient("Webhook", client =>
     {
         client.Timeout = TimeSpan.FromSeconds(15);
-    });
+    }).ConfigurePrimaryHttpMessageHandler(serviceProvider =>
+        WebhookHttpMessageHandlerFactory.Create(serviceProvider.GetRequiredService<IConfiguration>()));
+    builder.Services.AddHttpClient("Edoc", client =>
+    {
+        client.Timeout = TimeSpan.FromSeconds(30);
+        client.DefaultRequestHeaders.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+    }).ConfigurePrimaryHttpMessageHandler(EdocHttpMessageHandlerFactory.Create);
 
     // ──────────── File Upload ────────────
     builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options =>
     {
-        options.MultipartBodyLengthLimit = 10 * 1024 * 1024 * 5; // 5 files × 10 MB
+        // Public complaint form accepts up to 50 MB of files; keep a small allowance
+        // for the remaining multipart form fields and boundaries.
+        options.MultipartBodyLengthLimit = 55L * 1024 * 1024;
     });
+
+    var apiEnvironment = builder.Configuration["ApiManagement:Environment"];
+    if (!builder.Environment.IsDevelopment() &&
+        (apiEnvironment == null || !ApiIntegrationPolicy.AllowedEnvironments.Contains(apiEnvironment)))
+    {
+        throw new InvalidOperationException(
+            "ApiManagement:Environment must be configured as Sandbox or Production outside Development");
+    }
 
     var app = builder.Build();
 
@@ -180,19 +225,29 @@ try
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         if (!db.StaffUsers.Any(u => u.Role == "SuperAdmin"))
         {
-            db.StaffUsers.Add(new SRT.Complaint.Models.StaffUser
+            var bootstrapPassword = builder.Configuration["BootstrapAdmin:Password"];
+            if (string.IsNullOrWhiteSpace(bootstrapPassword))
             {
-                EmployeeCode = "0000001",
-                FullName = "Super Administrator",
-                Email = "admin@railway.co.th",
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword("Admin@1234", 12),
-                Role = "SuperAdmin",
-                IsActive = true,
-                MustChangePassword = true,
-                CreatedAt = DateTime.UtcNow
-            });
-            db.SaveChanges();
-            Log.Information("Seeded default SuperAdmin (EmployeeCode=0000001)");
+                if (!app.Environment.IsDevelopment())
+                    throw new InvalidOperationException("BootstrapAdmin:Password must be configured for the first production startup");
+                Log.Warning("No SuperAdmin exists. Configure BootstrapAdmin:Password in user-secrets to create the first administrator");
+            }
+            else
+            {
+                db.StaffUsers.Add(new SRT.Complaint.Models.StaffUser
+                {
+                    EmployeeCode = "0000001",
+                    FullName = "Super Administrator",
+                    Email = "admin@railway.co.th",
+                    PasswordHash = BCrypt.Net.BCrypt.HashPassword(bootstrapPassword, 12),
+                    Role = "SuperAdmin",
+                    IsActive = true,
+                    MustChangePassword = true,
+                    CreatedAt = DateTime.UtcNow
+                });
+                db.SaveChanges();
+                Log.Information("Seeded default SuperAdmin (EmployeeCode=0000001)");
+            }
         }
     }
 
@@ -207,8 +262,21 @@ try
         app.UseDeveloperExceptionPage();
     }
 
+    app.UseForwardedHeaders();
     app.UseSerilogRequestLogging();
     app.UseHttpsRedirection();
+    app.Use(async (context, next) =>
+    {
+        context.Response.OnStarting(() =>
+        {
+            context.Response.Headers.XContentTypeOptions = "nosniff";
+            context.Response.Headers["Referrer-Policy"] = "no-referrer";
+            if (context.Request.Path.StartsWithSegments("/api"))
+                context.Response.Headers.CacheControl = "no-store";
+            return Task.CompletedTask;
+        });
+        await next(context);
+    });
     app.UseStaticFiles();
 
     app.UseRouting();
@@ -241,6 +309,7 @@ try
     app.UseAuthorization();
 
     app.MapControllers();
+    app.MapOpenApi("/openapi/{documentName}.json");
     app.MapStaticAssets();
     app.MapRazorPages().WithStaticAssets();
 
@@ -249,6 +318,7 @@ try
 catch (Exception ex)
 {
     Log.Fatal(ex, "Application startup failed");
+    Environment.ExitCode = 1;
 }
 finally
 {

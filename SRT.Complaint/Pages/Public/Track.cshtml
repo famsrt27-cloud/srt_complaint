@@ -135,9 +135,9 @@
                 "InProgress"   => 2,
                 "WaitingInfo"
                 or "Forwarded"
-                or "UnderReview" => 3,
-                "Resolved"
-                or "Closed"
+                or "UnderReview"
+                or "Resolved"    => 3,
+                "Closed"
                 or "Rejected"  => 4,
                 _              => 1
             };
@@ -212,7 +212,7 @@
                         {
                             <span class="badge-urgent">ใกล้ครบกำหนด</span>
                         }
-                        else if (c.Status is "Closed" or "Resolved")
+                        else if (c.Status == "Closed")
                         {
                             <span class="badge-resolved">ดำเนินการแล้ว</span>
                         }
@@ -395,7 +395,7 @@
         }
 
         @* ── Status banners ── *@
-        @if (c.Status is "Closed" or "Resolved")
+        @if (c.Status == "Closed")
         {
             <div class="alert-success mb-4">
                 <svg class="w-4 h-4 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">

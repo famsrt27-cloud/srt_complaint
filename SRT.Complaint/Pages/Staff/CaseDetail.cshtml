@@ -6,7 +6,10 @@
     var c = Model.Complaint;
     var currentStaffId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
     var isAssignedToMe = c.AssignedToId == currentStaffId;
+    var canModify = User.IsInRole("SuperAdmin") || isAssignedToMe;
     var isClosed = c.Status is "Closed" or "Rejected";
+    var maskReporterInPdf = ReporterPrivacyChoices.ShouldMask(c.ReporterPrivacyChoice);
+    var hasPrivacyChoice = ReporterPrivacyChoices.IsValid(c.ReporterPrivacyChoice);
     var now = DateTime.UtcNow;
     var slaBreached = c.SlaBreached || (c.SlaDeadline.HasValue && c.SlaDeadline < now);
 
@@ -14,7 +17,7 @@
     {
         "Pending" => "bg-amber-100 text-amber-800 border-amber-200",
         "InProgress" => "bg-blue-100 text-blue-800 border-blue-200",
-        "Resolved" => "bg-green-100 text-green-800 border-green-200",
+        "Resolved" => "bg-blue-100 text-blue-800 border-blue-200",
         "Closed" => "bg-gray-200 text-gray-700 border-gray-300",
         "Rejected" => "bg-red-100 text-red-800 border-red-200",
         _ => "bg-gray-100 text-gray-700 border-gray-200"
@@ -24,6 +27,24 @@
         "Critical" => "bg-red-100 text-red-800 border-red-200",
         "Urgent" => "bg-orange-100 text-orange-800 border-orange-200",
         "High" => "bg-yellow-100 text-yellow-800 border-yellow-200",
+        _ => "bg-gray-100 text-gray-700 border-gray-200"
+    };
+    string EdocStatusLabel(string s) => s switch
+    {
+        "Pending" => "รอส่ง",
+        "Sending" => "กำลังส่ง",
+        "Sent" => "สร้างเอกสารแล้ว",
+        "SentWithAttachmentErrors" => "สร้างแล้ว (ไฟล์แนบไม่ครบ)",
+        "NeedsReview" => "ต้องตรวจสอบ",
+        "Failed" => "ส่งไม่สำเร็จ",
+        _ => s
+    };
+    string EdocStatusColor(string s) => s switch
+    {
+        "Sent" => "bg-green-100 text-green-800 border-green-200",
+        "Sending" or "Pending" => "bg-blue-100 text-blue-800 border-blue-200",
+        "SentWithAttachmentErrors" or "NeedsReview" => "bg-amber-100 text-amber-800 border-amber-200",
+        "Failed" => "bg-red-100 text-red-800 border-red-200",
         _ => "bg-gray-100 text-gray-700 border-gray-200"
     };
 }
@@ -60,68 +81,121 @@
             </svg>
             PDF
         </button>
+        <form method="post" asp-page-handler="DownloadExcel" asp-route-id="@c.Id">
+            @Html.AntiForgeryToken()
+            <button type="submit" class="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-green-600/40 px-3 py-1.5 text-xs font-medium text-green-700 transition hover:bg-green-600 hover:text-white focus:outline-none focus:ring-2 focus:ring-green-600 focus:ring-offset-2">
+                Excel
+            </button>
+        </form>
+        <form method="post" asp-page-handler="DownloadWord" asp-route-id="@c.Id">
+            @Html.AntiForgeryToken()
+            <button type="submit" class="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-blue-600/40 px-3 py-1.5 text-xs font-medium text-blue-700 transition hover:bg-blue-700 hover:text-white focus:outline-none focus:ring-2 focus:ring-blue-700 focus:ring-offset-2">
+                Word
+            </button>
+        </form>
 
-        <!-- Modal เลือกรูปแบบ PDF -->
+        <!-- Modal ดาวน์โหลด PDF ตามตัวเลือกที่ผู้ร้องบันทึกไว้ -->
         <div id="pdf-modal"
              class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
              onclick="if(event.target===this)this.classList.add('hidden')">
             <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6">
                 <h3 class="text-base font-semibold text-gray-900 mb-1">ดาวน์โหลด PDF</h3>
-                <p class="text-sm text-gray-500 mb-5">เลือกรูปแบบเอกสารที่ต้องการ</p>
+                <p class="text-sm text-gray-500 mb-4">
+                    ระบบกำหนดรูปแบบเอกสารจากตัวเลือกที่ผู้ร้องบันทึกไว้
+                </p>
 
-                <!-- ตัวเลือก 1: ปกปิดชื่อ -->
-                <form method="post" asp-page-handler="DownloadPdf" asp-route-id="@c.Id" class="mb-3">
+                @if (!hasPrivacyChoice)
+                {
+                    <div class="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 leading-relaxed">
+                        รายการนี้ไม่มีข้อมูลการเลือกจากผู้ร้อง ระบบจึงใช้แบบปกปิดข้อมูลโดยอัตโนมัติ
+                    </div>
+                }
+
+                <form method="post" asp-page-handler="DownloadPdf" asp-route-id="@c.Id">
                     @Html.AntiForgeryToken()
-                    <input type="hidden" name="maskReporter" value="true" />
+                    <div class="mb-4">
+                        <label for="pdf-department" class="block text-sm font-medium text-gray-800 mb-1.5">
+                            ฝ่ายงานที่เกี่ยวข้อง <span class="text-red-600" aria-hidden="true">*</span>
+                        </label>
+                        <select id="pdf-department" name="PdfDepartmentName" required
+                                onchange="togglePdfDepartmentOther(this)"
+                                class="form-select-compact w-full min-h-11">
+                            <option value="">— เลือกฝ่ายงาน —</option>
+                            @foreach (var department in Model.PdfDepartmentOptions)
+                            {
+                                <option value="@department" selected="@(department == (c.ResponsibleDepartment ?? c.Category.DepartmentName))">@department</option>
+                            }
+                            <option value="__other">ฝ่ายงานอื่น (ระบุชื่อ)</option>
+                        </select>
+                        <p class="mt-1.5 text-xs text-gray-500">
+                            ชื่อฝ่ายงานจะแสดงในบรรทัด “เรียน” บนเอกสาร PDF
+                        </p>
+                    </div>
+
+                    <div id="pdf-department-other-wrapper" class="hidden mb-4">
+                        <label for="pdf-department-other" class="block text-sm font-medium text-gray-800 mb-1.5">
+                            ระบุชื่อฝ่ายงาน <span class="text-red-600" aria-hidden="true">*</span>
+                        </label>
+                        <input id="pdf-department-other" name="PdfDepartmentOther" type="text" maxlength="200"
+                               autocomplete="off" placeholder="เช่น ฝ่ายเทคโนโลยีสารสนเทศ"
+                               class="form-input-compact w-full min-h-11" />
+                    </div>
+
                     <button type="submit" class="w-full flex items-start gap-3 p-4 rounded-xl border-2 border-gray-200
                         hover:border-blue-400 hover:bg-blue-50 active:bg-blue-100
-                        focus:outline-none transition text-left group">
+                        focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition text-left group">
                         <div class="mt-0.5 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center shrink-0
-                            group-hover:bg-blue-100 transition">
-                            <svg class="w-4 h-4 text-gray-500 group-hover:text-blue-600 transition" fill="none"
-                                 stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                      d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18" />
-                            </svg>
-                        </div>
-                        <div>
-                            <p class="text-sm font-semibold text-gray-800">ปกปิดข้อมูลผู้ร้องเรียน</p>
-                            <p class="text-xs text-gray-500 mt-0.5">สำหรับส่งต่อหน่วยงาน — แสดงข้อความ PDPA
-                                แทนชื่อ/เบอร์โทร</p>
-                            </div>
-                        </button>
-                    </form>
-
-                    <!-- ตัวเลือก 2: แสดงครบ -->
-                    <form method="post" asp-page-handler="DownloadPdf" asp-route-id="@c.Id">
-                        @Html.AntiForgeryToken()
-                        <input type="hidden" name="maskReporter" value="false" />
-                        <button type="submit" class="w-full flex items-start gap-3 p-4 rounded-xl border-2 border-gray-200
-                            hover:border-gray-400 hover:bg-gray-50 active:bg-gray-100
-                            focus:outline-none transition text-left group">
-                            <div class="mt-0.5 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center shrink-0
-                                group-hover:bg-gray-200 transition">
-                                <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    group-hover:bg-blue-100 transition">
+                            @if (maskReporterInPdf)
+                            {
+                                <svg class="w-4 h-4 text-gray-500 group-hover:text-blue-600 transition" fill="none"
+                                     stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                          d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18" />
+                                </svg>
+                            }
+                            else
+                            {
+                                <svg class="w-4 h-4 text-gray-500 group-hover:text-blue-600 transition" fill="none"
+                                     stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                           d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                                 </svg>
-                            </div>
-                            <div>
-                                <p class="text-sm font-semibold text-gray-800">แสดงข้อมูลครบถ้วน</p>
-                                <p class="text-xs text-gray-500 mt-0.5">สำหรับใช้ภายใน — แสดงชื่อ เบอร์โทร
-                                    และอีเมลผู้ร้องเรียน</p>
-                                </div>
-                            </button>
-                        </form>
+                            }
+                        </div>
+                        <span>
+                            <span class="block text-sm font-semibold text-gray-800">
+                                @(maskReporterInPdf ? "ดาวน์โหลดแบบปกปิดข้อมูล" : "ดาวน์โหลดแบบแสดงข้อมูลครบถ้วน")
+                            </span>
+                            <span class="block text-xs text-gray-500 mt-0.5">
+                                @(maskReporterInPdf
+                                    ? "ไม่แสดงชื่อ เบอร์โทร อีเมล และข้อมูลส่วนบุคคลของผู้ร้อง"
+                                    : "แสดงชื่อ เบอร์โทร และอีเมลตามที่ผู้ร้องยินยอม")
+                            </span>
+                        </span>
+                    </button>
+                </form>
 
-                        <button type="button" onclick="document.getElementById('pdf-modal').classList.add('hidden')"
-                                class="mt-4 w-full text-sm text-gray-400 hover:text-gray-600 transition">
+                <button type="button" onclick="document.getElementById('pdf-modal').classList.add('hidden')"
+                        class="mt-4 w-full min-h-11 text-sm text-gray-500 hover:text-gray-700 transition">
                             ยกเลิก
                         </button>
                     </div>
                 </div>
+
             </div>
         </div>
+
+        <script>
+            function togglePdfDepartmentOther(select) {
+                const wrapper = document.getElementById('pdf-department-other-wrapper');
+                const input = document.getElementById('pdf-department-other');
+                const isOther = select.value === '__other';
+                wrapper.classList.toggle('hidden', !isOther);
+                input.required = isOther;
+                if (!isOther) input.value = '';
+            }
+        </script>
 
         <!-- ══ Two-column layout ══ -->
         <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
@@ -151,6 +225,21 @@
                         <div>
                             <dt class="text-xs text-gray-500 font-medium">ประเภทเรื่อง</dt>
                             <dd class="text-gray-900 mt-0.5">@c.Category.Name</dd>
+                        </div>
+                        @if (c.SubCategory != null)
+                        {
+                            <div>
+                                <dt class="text-xs text-gray-500 font-medium">หัวข้อย่อย</dt>
+                                <dd class="text-gray-900 mt-0.5">@c.SubCategory.Name</dd>
+                            </div>
+                        }
+                        <div>
+                            <dt class="text-xs text-gray-500 font-medium">ฝ่ายรับผิดชอบ</dt>
+                            <dd class="text-gray-900 mt-0.5">@(c.ResponsibleDepartment ?? c.Category.DepartmentName ?? "ยังไม่ระบุ")</dd>
+                        </div>
+                        <div>
+                            <dt class="text-xs text-gray-500 font-medium">วัตถุประสงค์การแจ้งเรื่อง</dt>
+                            <dd class="text-gray-900 mt-0.5">@ComplaintSubmissionPurposes.Label(c.SubmissionPurpose)</dd>
                         </div>
                         @if (!string.IsNullOrEmpty(c.SubjectStation))
                         {
@@ -402,14 +491,214 @@
                             </div>
                         }
 
-                        <!-- Update Status -->
+                        <!-- Edit complaint classification -->
+                        @if (canModify)
+                        {
+                            <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+                                <h3 class="text-sm font-semibold text-gray-900">แก้ไขประเภทและฝ่ายรับผิดชอบ</h3>
+                                <p class="mt-1 mb-3 text-xs text-gray-500">ใช้เมื่อผู้ร้องเลือกประเภทหรือฝ่ายไม่ถูกต้อง</p>
+                                <form method="post" asp-page-handler="UpdateClassification" asp-route-id="@c.Id">
+                                    @Html.AntiForgeryToken()
+                                    <label for="classification-category" class="block text-xs font-medium text-gray-700 mb-1">ประเภทเรื่อง</label>
+                                    <select id="classification-category" name="ClassificationCategoryId" required
+                                            class="form-select-compact min-h-11 mb-3">
+                                        @foreach (var category in Model.ClassificationCategoryOptions)
+                                        {
+                                            <option value="@category.Value" selected="@(category.Value == Model.ClassificationCategoryId.ToString())">@category.Text</option>
+                                        }
+                                    </select>
+
+                                    <div id="classification-subcategory-wrapper" class="mb-3">
+                                        <label for="classification-subcategory" class="block text-xs font-medium text-gray-700 mb-1">หัวข้อย่อย</label>
+                                        <select id="classification-subcategory" name="ClassificationSubCategoryId"
+                                                class="form-select-compact min-h-11"></select>
+                                    </div>
+
+                                    <label for="classification-department" class="block text-xs font-medium text-gray-700 mb-1">ฝ่ายรับผิดชอบ</label>
+                                    <select id="classification-department" name="ClassificationDepartment"
+                                            class="form-select-compact min-h-11 mb-3">
+                                        <option value="">— ใช้ฝ่ายตามประเภทเรื่อง —</option>
+                                        @foreach (var department in Model.ClassificationDepartmentOptions)
+                                        {
+                                            <option value="@department" selected="@(department == Model.ClassificationDepartment)">@department</option>
+                                        }
+                                    </select>
+
+                                    <button type="submit" class="w-full min-h-11 border border-srt-navy text-srt-navy text-sm font-medium py-2 rounded-lg
+                                        hover:bg-srt-navy hover:text-white focus:outline-none focus:ring-2 focus:ring-srt-navy focus:ring-offset-2 transition">
+                                        บันทึกการแก้ไข
+                                    </button>
+                                </form>
+                            </div>
+                        }
+
+                        <!-- eDOC -->
+                        @if (Model.EdocEnabled || Model.EdocLink != null)
+                        {
+                            <div class="bg-white rounded-xl border border-blue-200 shadow-sm p-4">
+                                <div class="flex items-start justify-between gap-3 mb-3">
+                                    <div>
+                                        <h3 class="text-sm font-semibold text-gray-900">เอกสาร eDOC</h3>
+                                        <p class="text-xs text-gray-500 mt-1">ระบบจะใช้บัญชีบริการส่งให้โดยอัตโนมัติ ไม่ต้องเข้าสู่ระบบ eDOC</p>
+                                    </div>
+                                    @if (Model.EdocLink != null)
+                                    {
+                                        <span class="inline-flex shrink-0 rounded-full border px-2 py-1 text-xs font-medium @EdocStatusColor(Model.EdocLink.SyncStatus)">
+                                            @EdocStatusLabel(Model.EdocLink.SyncStatus)
+                                        </span>
+                                    }
+                                </div>
+
+                                @if (Model.EdocLink == null)
+                                {
+                                    @if (canModify && Model.EdocEnabled)
+                                    {
+                                        <form method="post" asp-page-handler="SendToEdoc" asp-route-id="@c.Id"
+                                              onsubmit="const b=this.querySelector('button[type=submit]');b.disabled=true;b.textContent='กำลังสร้างเอกสาร...';">
+                                            @Html.AntiForgeryToken()
+                                            <label for="edoc-basket" class="block text-xs font-medium text-gray-700 mb-1">ฝ่าย/สำนักงาน (Basket)</label>
+                                            <select id="edoc-basket" name="EdocBasketId" required class="form-select-compact min-h-11 mb-3">
+                                                @foreach (var basket in Model.EdocBaskets)
+                                                {
+                                                    <option value="@basket.Id" selected="@(basket.Id == Model.DefaultEdocBasketId)">@basket.Name (@basket.Id)</option>
+                                                }
+                                            </select>
+                                            <button type="submit"
+                                                    class="w-full min-h-11 bg-blue-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg hover:bg-blue-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-60 transition"
+                                                    onclick="return confirm('ยืนยันสร้างเอกสารใน eDOC สำหรับ Basket ที่เลือก?')">
+                                                สร้างเอกสาร eDOC
+                                            </button>
+                                        </form>
+                                    }
+                                    else if (!Model.EdocEnabled)
+                                    {
+                                        <p class="text-sm text-amber-700 bg-amber-50 rounded-lg p-3">ยังไม่ได้เปิดใช้งานการเชื่อมต่อ eDOC</p>
+                                    }
+                                    else
+                                    {
+                                        <p class="text-sm text-gray-500">เฉพาะผู้รับผิดชอบเรื่องหรือผู้ดูแลระบบเท่านั้นที่สร้างเอกสารได้</p>
+                                    }
+                                }
+                                else
+                                {
+                                    var edoc = Model.EdocLink;
+                                    <dl class="space-y-2 text-xs">
+                                        <div class="flex justify-between gap-3"><dt class="text-gray-500">Basket</dt><dd class="text-right font-medium text-gray-800">@(edoc.BasketName ?? "-")<br /><span class="font-mono text-gray-500">@edoc.BasketId</span></dd></div>
+                                        <div class="flex justify-between gap-3"><dt class="text-gray-500">WID</dt><dd class="font-mono text-right text-gray-800 break-all">@edoc.WID</dd></div>
+                                        <div class="flex justify-between gap-3"><dt class="text-gray-500">เลขทะเบียน</dt><dd class="font-medium text-right text-gray-800">@(edoc.RegisterNumber ?? "รอข้อมูลจาก eDOC")</dd></div>
+                                        @if (!string.IsNullOrWhiteSpace(edoc.RemoteStatusDescription))
+                                        {
+                                            <div class="flex justify-between gap-3"><dt class="text-gray-500">สถานะ eDOC</dt><dd class="text-right text-gray-800">@edoc.RemoteStatusDescription</dd></div>
+                                        }
+                                    </dl>
+
+                                    @if (!string.IsNullOrWhiteSpace(edoc.LastError))
+                                    {
+                                        <div class="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">@edoc.LastError</div>
+                                    }
+
+                                    @if (canModify && Model.EdocEnabled)
+                                    {
+                                        <div class="grid grid-cols-1 gap-2 mt-3">
+                                            @if (edoc.SyncStatus is "Sent" or "SentWithAttachmentErrors")
+                                            {
+                                                <form method="post" asp-page-handler="TrackEdoc" asp-route-id="@c.Id">
+                                                    @Html.AntiForgeryToken()
+                                                    <button type="submit" class="w-full min-h-11 border border-blue-300 text-blue-700 text-sm font-medium px-3 py-2 rounded-lg hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 transition">ตรวจสอบสถานะ eDOC</button>
+                                                </form>
+                                            }
+                                            @if (edoc.SyncStatus == "NeedsReview")
+                                            {
+                                                <form method="post" asp-page-handler="ReconcileEdoc" asp-route-id="@c.Id">
+                                                    @Html.AntiForgeryToken()
+                                                    <button type="submit" class="w-full min-h-11 border border-amber-300 text-amber-800 text-sm font-medium px-3 py-2 rounded-lg hover:bg-amber-50 transition">ตรวจสอบว่ามีเอกสารแล้วหรือยัง</button>
+                                                </form>
+                                            }
+                                            @if (User.IsInRole("SuperAdmin") && edoc.SyncStatus is "Failed" or "NeedsReview")
+                                            {
+                                                <form method="post" asp-page-handler="RetryEdoc" asp-route-id="@c.Id">
+                                                    @Html.AntiForgeryToken()
+                                                    <button type="submit" onclick="return confirm('ยืนยันส่งเอกสาร eDOC ใหม่? ควรตรวจสอบก่อนเพื่อป้องกันเอกสารซ้ำ')"
+                                                            class="w-full min-h-11 border border-red-300 text-red-700 text-sm font-medium px-3 py-2 rounded-lg hover:bg-red-50 transition">ส่งใหม่ (ผู้ดูแลระบบ)</button>
+                                                </form>
+                                            }
+                                            @if (User.IsInRole("SuperAdmin") && edoc.SyncStatus == "SentWithAttachmentErrors")
+                                            {
+                                                <form method="post" asp-page-handler="RetryEdocAttachments" asp-route-id="@c.Id">
+                                                    @Html.AntiForgeryToken()
+                                                    <button type="submit" onclick="return confirm('ยืนยันส่งไฟล์แนบที่มีปัญหาใหม่?')"
+                                                            class="w-full min-h-11 border border-amber-300 text-amber-800 text-sm font-medium px-3 py-2 rounded-lg hover:bg-amber-50 transition">ส่งไฟล์แนบใหม่ (ผู้ดูแลระบบ)</button>
+                                                </form>
+                                            }
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        }
+
+                        <!-- Complete and close in one step -->
+                        @if (canModify && c.Status is "InProgress" or "Resolved")
+                        {
+                            <div class="bg-white rounded-xl border-2 border-green-300 shadow-sm p-4">
+                                <div class="flex items-start gap-3 mb-4">
+                                    <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-green-100 text-green-700">
+                                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                                        </svg>
+                                    </span>
+                                    <div>
+                                        <h3 class="text-sm font-semibold text-gray-900">สรุปผลและปิดงาน</h3>
+                                        <p class="mt-1 text-xs leading-5 text-gray-600">กรอกครั้งเดียว ระบบจะส่งข้อความนี้ให้ผู้ร้องและเปลี่ยนสถานะเป็น “ปิดเรื่อง” ทันที</p>
+                                    </div>
+                                </div>
+
+                                <form id="close-case-form" method="post" asp-page-handler="Close" asp-route-id="@c.Id">
+                                    @Html.AntiForgeryToken()
+                                    <label for="close-opening" class="block text-xs font-medium text-gray-700 mb-1">
+                                        ประโยคขึ้นต้น <span class="text-red-600" aria-hidden="true">*</span>
+                                    </label>
+                                    <select id="close-opening" name="CloseOpening" required
+                                            aria-describedby="close-opening-help"
+                                            class="form-select-compact min-h-11 mb-1">
+                                        <option value="">— เลือกประโยคขึ้นต้น —</option>
+                                        @foreach (var option in CaseDetailModel.CloseOpeningOptions)
+                                        {
+                                            <option value="@option.Key">@option.Value</option>
+                                        }
+                                    </select>
+                                    <p id="close-opening-help" class="text-xs text-gray-500 mb-3">เลือกประโยคที่ตรงกับผลการดำเนินงานมากที่สุด</p>
+
+                                    <label for="close-resolution" class="block text-xs font-medium text-gray-700 mb-1">
+                                        รายละเอียดสรุปผล <span class="text-red-600" aria-hidden="true">*</span>
+                                    </label>
+                                    <textarea id="close-resolution" name="CloseResolution" rows="4" required maxlength="4000"
+                                              aria-describedby="close-resolution-help"
+                                              placeholder="เช่น ได้เปลี่ยนอุปกรณ์ที่ชำรุดและตรวจสอบความปลอดภัยเรียบร้อยแล้ว"
+                                              class="form-textarea-compact min-h-28 mb-1 border-green-200 focus:border-green-500 focus:ring-green-500"></textarea>
+                                    <p id="close-resolution-help" class="text-xs text-gray-500">ระบุสิ่งที่ตรวจสอบ แก้ไข หรือชี้แจง โดยไม่ต้องพิมพ์ประโยคขึ้นต้นซ้ำ</p>
+
+                                    <div id="close-summary-preview" class="hidden mt-3 rounded-lg border border-green-200 bg-green-50 p-3" aria-live="polite">
+                                        <p class="text-xs font-semibold text-green-800 mb-1">ข้อความที่ผู้ร้องจะเห็น</p>
+                                        <p id="close-summary-preview-text" class="text-sm leading-6 text-gray-800 whitespace-pre-wrap"></p>
+                                    </div>
+
+                                    <button id="close-case-submit" type="submit"
+                                            class="mt-4 w-full min-h-11 rounded-lg bg-green-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-green-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-60 transition">
+                                        บันทึกสรุปผลและปิดงาน
+                                    </button>
+                                </form>
+                            </div>
+                        }
+
+                        <!-- Other status actions -->
                         @if (!isClosed && Model.AllowedNextStatuses.Length > 0)
                         {
                             <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-                                <h3 class="text-sm font-semibold text-gray-900 mb-3">อัปเดตสถานะ</h3>
+                                <h3 class="text-sm font-semibold text-gray-900 mb-3">การดำเนินการอื่น</h3>
                                 <form method="post" asp-page-handler="UpdateStatus" asp-route-id="@c.Id">
                                     @Html.AntiForgeryToken()
-                                    <select name="NewStatus" class="form-select-compact mb-3">
+                                    <label for="new-status" class="sr-only">เลือกสถานะใหม่</label>
+                                    <select id="new-status" name="NewStatus" required class="form-select-compact min-h-11 mb-3">
                                         <option value="">— เลือกสถานะใหม่ —</option>
                                         @foreach (var status in Model.AllowedNextStatuses)
                                         {
@@ -482,23 +771,6 @@
                             </div>
                         }
 
-                        <!-- Close -->
-                        @if (c.Status == "Resolved")
-                        {
-                            <div class="bg-white rounded-xl border border-red-200 shadow-sm p-4">
-                                <h3 class="text-sm font-semibold text-red-700 mb-3">ปิดเรื่องร้องเรียน</h3>
-                                <form method="post" asp-page-handler="Close" asp-route-id="@c.Id">
-                                    @Html.AntiForgeryToken()
-                                    <textarea name="CloseResolution" rows="3" required
-                                              placeholder="สรุปการดำเนินการก่อนปิดเรื่อง (จำเป็น)..." class="form-textarea-compact mb-3 border-red-200 focus:border-red-400"></textarea>
-                                    <button type="submit" onclick="return confirm('ยืนยันการปิดเรื่องนี้?')" class="w-full bg-red-600 text-white text-sm font-medium py-2 rounded-lg
-                                        hover:bg-red-700 transition">
-                                        ปิดเรื่อง
-                                    </button>
-                                </form>
-                            </div>
-                        }
-
                         <!-- Closed state info -->
                         @if (isClosed)
                         {
@@ -532,3 +804,74 @@
 
                     </div>
                 </div>
+
+@section Scripts {
+    <script>
+        (function () {
+            const category = document.getElementById('classification-category');
+            const subcategory = document.getElementById('classification-subcategory');
+            const wrapper = document.getElementById('classification-subcategory-wrapper');
+            const department = document.getElementById('classification-department');
+            if (!category || !subcategory || !wrapper) return;
+
+            const allSubcategories = @Html.Raw(Model.ClassificationSubCategoriesJson);
+            const departmentsByCategory = @Html.Raw(Model.ClassificationDepartmentsByCategoryJson);
+            const initialSubcategory = '@(Model.ClassificationSubCategoryId)';
+
+            function refreshSubcategories(keepInitial) {
+                const items = allSubcategories[category.value] || [];
+                subcategory.replaceChildren();
+
+                const empty = document.createElement('option');
+                empty.value = '';
+                empty.textContent = '— ไม่ระบุหัวข้อย่อย —';
+                subcategory.appendChild(empty);
+
+                items.forEach(function (item) {
+                    const option = document.createElement('option');
+                    option.value = item.id;
+                    option.textContent = item.name;
+                    if (keepInitial && String(item.id) === initialSubcategory) option.selected = true;
+                    subcategory.appendChild(option);
+                });
+
+                wrapper.classList.toggle('hidden', items.length === 0);
+            }
+
+            category.addEventListener('change', function () {
+                refreshSubcategories(false);
+                if (department) department.value = departmentsByCategory[category.value] || '';
+            });
+            refreshSubcategories(true);
+        })();
+
+        (function () {
+            const form = document.getElementById('close-case-form');
+            const opening = document.getElementById('close-opening');
+            const resolution = document.getElementById('close-resolution');
+            const preview = document.getElementById('close-summary-preview');
+            const previewText = document.getElementById('close-summary-preview-text');
+            const submit = document.getElementById('close-case-submit');
+            if (!form || !opening || !resolution || !preview || !previewText || !submit) return;
+
+            function updatePreview() {
+                const openingText = opening.value ? opening.options[opening.selectedIndex].text : '';
+                const detailText = resolution.value.trim();
+                const hasCompleteSummary = openingText && detailText;
+                preview.classList.toggle('hidden', !hasCompleteSummary);
+                previewText.textContent = hasCompleteSummary ? `${openingText} ${detailText}` : '';
+            }
+
+            opening.addEventListener('change', updatePreview);
+            resolution.addEventListener('input', updatePreview);
+            form.addEventListener('submit', function (event) {
+                if (!window.confirm('ยืนยันบันทึกสรุปผลและปิดงานนี้? ผู้ร้องจะเห็นข้อความที่แสดงในตัวอย่าง')) {
+                    event.preventDefault();
+                    return;
+                }
+                submit.disabled = true;
+                submit.textContent = 'กำลังบันทึกและปิดงาน...';
+            });
+        })();
+    </script>
+}

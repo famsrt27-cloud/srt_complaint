@@ -1,0 +1,87 @@
+@page
+@model SRT.Complaint.Pages.Admin.PdfSettingsModel
+@{
+    ViewData["Title"] = "ตั้งค่าเอกสาร PDF";
+}
+
+<div class="mb-6">
+    <h1 class="text-xl font-bold text-gray-900">ตั้งค่าเอกสาร PDF</h1>
+    <p class="text-sm text-gray-500 mt-1">กำหนดชื่อ ตำแหน่ง และลายเซ็นที่ใช้ในใบบันทึกเรื่องร้องเรียน</p>
+</div>
+
+<form method="post" enctype="multipart/form-data" class="max-w-3xl">
+    @Html.AntiForgeryToken()
+    <div asp-validation-summary="ModelOnly" class="alert-error mb-5 [&:empty]:hidden"></div>
+
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div class="px-4 sm:px-6 py-4 border-b border-gray-100">
+            <h2 class="font-semibold text-gray-900 text-sm">Master ผู้ลงนาม</h2>
+        </div>
+        <div class="p-4 sm:p-6 space-y-5">
+            <div>
+                <label asp-for="Input.FullName" class="form-label">ชื่อ-นามสกุล <span class="text-red-500">*</span></label>
+                <input asp-for="Input.FullName" class="form-input h-10" autocomplete="name" />
+                <span asp-validation-for="Input.FullName" class="form-error block" role="alert"></span>
+            </div>
+
+            <div>
+                <label asp-for="Input.PositionTitle" class="form-label">ตำแหน่ง <span class="text-red-500">*</span></label>
+                <input asp-for="Input.PositionTitle" class="form-input h-10" />
+                <span asp-validation-for="Input.PositionTitle" class="form-error block" role="alert"></span>
+            </div>
+
+            <div>
+                <label asp-for="Input.ActingTitle" class="form-label">ข้อความปฏิบัติการแทน <span class="text-red-500">*</span></label>
+                <input asp-for="Input.ActingTitle" class="form-input h-10" />
+                <span asp-validation-for="Input.ActingTitle" class="form-error block" role="alert"></span>
+            </div>
+
+            <div>
+                <label asp-for="Input.Signature" class="form-label">ไฟล์ลายเซ็น</label>
+                <p class="text-xs text-gray-500 mb-2">รองรับ JPG หรือ PNG ขนาดไม่เกิน 5 MB หากไม่เลือกไฟล์ใหม่ ระบบจะใช้ลายเซ็นเดิม</p>
+                <input asp-for="Input.Signature" type="file" accept=".jpg,.jpeg,.png"
+                       class="block w-full text-sm text-gray-600 file:mr-4 file:rounded-lg file:border-0
+                              file:bg-srt-navy file:px-4 file:py-2.5 file:text-sm file:font-medium file:text-white
+                              hover:file:bg-srt-navy/90 cursor-pointer"
+                       onchange="previewSignature(this)" />
+                <span asp-validation-for="Input.Signature" class="form-error block" role="alert"></span>
+            </div>
+
+            <div class="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-4">
+                <p class="text-xs font-medium text-gray-600 mb-3">ตัวอย่างลายเซ็นปัจจุบัน</p>
+                @if (Model.HasSignature)
+                {
+                    <img id="signature-preview" src="@Url.Page("PdfSettings", "Signature")"
+                         alt="ลายเซ็นผู้ลงนามปัจจุบัน" class="max-h-32 max-w-full object-contain bg-white rounded-lg border border-gray-200 p-2" />
+                }
+                else
+                {
+                    <p id="signature-empty" class="text-sm text-gray-400">ยังไม่มีไฟล์ลายเซ็น</p>
+                    <img id="signature-preview" alt="ตัวอย่างลายเซ็นใหม่" class="hidden max-h-32 max-w-full object-contain bg-white rounded-lg border border-gray-200 p-2" />
+                }
+            </div>
+        </div>
+    </div>
+
+    <div class="mt-5 flex items-center gap-3">
+        <button type="submit" class="btn-primary btn-lg">บันทึกการตั้งค่า</button>
+        @if (Model.Current is not null)
+        {
+            <span class="text-xs text-gray-400">อัปเดตล่าสุด @Model.Current.UpdatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</span>
+        }
+    </div>
+</form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+    <script>
+        function previewSignature(input) {
+            if (!input.files || input.files.length === 0) return;
+            const preview = document.getElementById('signature-preview');
+            const empty = document.getElementById('signature-empty');
+            preview.src = URL.createObjectURL(input.files[0]);
+            preview.classList.remove('hidden');
+            if (empty) empty.classList.add('hidden');
+        }
+    </script>
+}

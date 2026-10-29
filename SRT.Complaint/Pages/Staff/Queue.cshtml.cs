@@ -20,6 +20,8 @@ public class QueueModel(
     [BindProperty(SupportsGet = true)] public string? Status { get; set; }
     [BindProperty(SupportsGet = true)] public string? Priority { get; set; }
     [BindProperty(SupportsGet = true)] public int? CategoryId { get; set; }
+    [BindProperty(SupportsGet = true)] public DateTime? FromDate { get; set; }
+    [BindProperty(SupportsGet = true)] public DateTime? ToDate { get; set; }
     [BindProperty(SupportsGet = true)] public int CurrentPage { get; set; } = 1;
 
     public const int PageSize = 20;
@@ -39,6 +41,8 @@ public class QueueModel(
             Status: Status,
             CategoryId: CategoryId,
             Priority: Priority,
+            FromDate: FromDate,
+            ToDate: ToDate,
             Search: Search,
             Page: CurrentPage,
             PageSize: PageSize
@@ -82,7 +86,7 @@ public class QueueModel(
         TempData["SyncResult"] = log.SyncStatus == "Success"
             ? $"success|{log.NewCount}|{log.DuplicateCount}|{log.FetchedCount}"
             : $"error|{log.ErrorMessage}";
-        return RedirectToPage(new { Search, Status, Priority, CategoryId, CurrentPage });
+        return RedirectToPage(new { Search, Status, Priority, CategoryId, FromDate, ToDate, CurrentPage });
     }
 
     public async Task<IActionResult> OnPostClaimAsync(int id)
@@ -97,7 +101,7 @@ public class QueueModel(
         {
             TempData["Error"] = ex.Message;
         }
-        return RedirectToPage(new { Search, Status, Priority, CategoryId, CurrentPage });
+        return RedirectToPage(new { Search, Status, Priority, CategoryId, FromDate, ToDate, CurrentPage });
     }
 
     private static string PriorityLabel(string p) => p switch
@@ -114,7 +118,7 @@ public class QueueModel(
     {
         "Pending"    => "รอรับเรื่อง",
         "InProgress" => "กำลังดำเนินการ",
-        "Resolved"   => "แก้ไขแล้ว",
+        "Resolved"   => "รอสรุปผลปิดงาน",
         "Closed"     => "ปิดเรื่อง",
         "Rejected"   => "ปฏิเสธ",
         _            => s

@@ -1,10 +1,8 @@
 namespace SRT.Complaint.Services;
 
 /// <summary>
-/// Runs a daily pull sync for every configured external system (Traffy Fondue, etc.) so that
-/// issues aren't lost when staff forget to click "ดึงคำร้อง" manually — Traffy's get-issues API
-/// only supports duration=today (no arbitrary date range), so a missed day is unrecoverable
-/// without this.
+/// Runs a daily pull sync for every configured external system so issues are still imported
+/// when staff do not click "ดึงคำร้อง" manually.
 /// </summary>
 public class ExternalSyncBackgroundService(
     IServiceScopeFactory scopeFactory,
