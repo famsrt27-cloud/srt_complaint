@@ -124,7 +124,7 @@ public class ApiKeyService(AppDbContext db, IAuditService auditService, IConfigu
             throw new InvalidOperationException("Scope ไม่ถูกต้อง");
         if (request.RateLimitPerMin is < 1 or > 3600)
             throw new InvalidOperationException("Rate limit ต้องอยู่ระหว่าง 1–3,600 requests/minute");
-        if (!request.ExpiresAt.HasValue || request.ExpiresAt <= DateTime.UtcNow || request.ExpiresAt > DateTime.UtcNow.AddDays(366))
+        if (!ApiKeyExpirationPolicy.IsWithinAllowedRange(request.ExpiresAt))
             throw new InvalidOperationException("วันหมดอายุต้องอยู่ภายใน 1–366 วันนับจากวันนี้");
         if (!ApiIntegrationPolicy.TryNormalizeIpAllowlist(request.AllowedIps, out _, out var error))
             throw new InvalidOperationException(error);

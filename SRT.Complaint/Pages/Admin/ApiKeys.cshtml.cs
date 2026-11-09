@@ -40,7 +40,7 @@ public class ApiKeysModel(
     [BindProperty] public List<string> NewScopes { get; set; } = [];
     [BindProperty, Range(1, 3600)] public int NewRateLimit { get; set; } = 60;
     [BindProperty] public string? NewAllowedIps { get; set; }
-    [BindProperty, Required] public DateTime? NewExpiresAt { get; set; } = DateTime.Today.AddDays(180);
+    [BindProperty, Required] public string? NewExpiresAt { get; set; } = ApiKeyExpirationPolicy.GetInputDate(180);
 
     [BindProperty, StringLength(50)] public string? PartnerCode { get; set; }
     [BindProperty, StringLength(200)] public string? PartnerName { get; set; }
@@ -134,6 +134,12 @@ public class ApiKeysModel(
             await LoadAsync();
             return Page();
         }
+        if (!ApiKeyExpirationPolicy.TryParseInputDate(NewExpiresAt, out var expiresAtUtc))
+        {
+            ModelState.AddModelError(nameof(NewExpiresAt), "รูปแบบวันหมดอายุไม่ถูกต้อง");
+            await LoadAsync();
+            return Page();
+        }
 
         try
         {
@@ -147,7 +153,7 @@ public class ApiKeysModel(
                 NewScopes,
                 NewRateLimit,
                 NewAllowedIps,
-                NewExpiresAt?.Date.AddDays(1).AddTicks(-1).ToUniversalTime(),
+                expiresAtUtc,
                 GetActorId());
 
             var (key, rawKey) = await apiKeyService.CreateAsync(request);

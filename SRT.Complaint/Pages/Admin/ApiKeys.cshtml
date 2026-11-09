@@ -350,7 +350,7 @@
                 <div class="mt-3 grid grid-cols-1 gap-4 md:grid-cols-3">
                     <div>
                         <label asp-for="NewExpiresAt" class="block text-sm font-medium text-gray-700">วันหมดอายุ <span class="text-red-600">*</span></label>
-                        <input asp-for="NewExpiresAt" type="date" required min="@DateTime.Today.AddDays(1).ToString("yyyy-MM-dd")" max="@DateTime.Today.AddDays(366).ToString("yyyy-MM-dd")"
+                        <input asp-for="NewExpiresAt" type="date" required min="@SRT.Complaint.Services.ApiKeyExpirationPolicy.GetInputDate(1)" max="@SRT.Complaint.Services.ApiKeyExpirationPolicy.GetInputDate(366)"
                                class="mt-1 min-h-11 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-srt-navy focus:outline-none" />
                         <span asp-validation-for="NewExpiresAt" class="mt-1 block text-xs text-red-600"></span>
                     </div>
