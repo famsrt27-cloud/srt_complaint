@@ -17,6 +17,7 @@ public class CategoriesModel(AppDbContext db, IAuditService auditService) : Page
 
     public IReadOnlyList<ComplaintCategory> Categories { get; private set; } = [];
     public Dictionary<int, List<ComplaintSubCategory>> SubsByCategory { get; private set; } = [];
+    public IReadOnlyList<ComplaintDepartment> DepartmentOptions { get; private set; } = [];
     public ComplaintCategory? EditTarget { get; private set; }
 
     // Create category
@@ -47,9 +48,9 @@ public class CategoriesModel(AppDbContext db, IAuditService auditService) : Page
     public async Task OnGetAsync()
     {
         ViewData["Title"] = "หมวดหมู่เรื่องร้องเรียน";
-        await LoadDataAsync();
         if (EditId.HasValue)
             EditTarget = await db.ComplaintCategories.FindAsync(EditId.Value);
+        await LoadDataAsync();
     }
 
     private async Task LoadDataAsync()
@@ -57,6 +58,12 @@ public class CategoriesModel(AppDbContext db, IAuditService auditService) : Page
         Categories = await db.ComplaintCategories.OrderBy(c => c.SortOrder).ThenBy(c => c.Name).ToListAsync();
         var subs = await db.ComplaintSubCategories.OrderBy(s => s.SortOrder).ThenBy(s => s.Name).ToListAsync();
         SubsByCategory = subs.GroupBy(s => s.CategoryId).ToDictionary(g => g.Key, g => g.ToList());
+        var currentDepartment = EditTarget?.DepartmentName;
+        DepartmentOptions = await db.ComplaintDepartments
+            .Where(x => x.IsActive || (currentDepartment != null && x.Name == currentDepartment))
+            .OrderBy(x => x.SortOrder)
+            .ThenBy(x => x.Name)
+            .ToListAsync();
     }
 
     // ══ Category handlers ══
@@ -68,10 +75,16 @@ public class CategoriesModel(AppDbContext db, IAuditService auditService) : Page
             TempData["Error"] = "กรุณากรอกชื่อหมวดหมู่";
             return RedirectToPage();
         }
+        var newDepartment = await ResolveDepartmentAsync(NewDepartmentName);
+        if (!newDepartment.Valid)
+        {
+            TempData["Error"] = newDepartment.Error;
+            return RedirectToPage();
+        }
         var cat = new ComplaintCategory
         {
             Name            = NewName.Trim(),
-            DepartmentName  = string.IsNullOrWhiteSpace(NewDepartmentName) ? null : NewDepartmentName.Trim(),
+            DepartmentName  = newDepartment.Name,
             DefaultPriority = NewDefaultPriority,
             SortOrder       = NewSortOrder,
             IsActive        = true
@@ -94,8 +107,15 @@ public class CategoriesModel(AppDbContext db, IAuditService auditService) : Page
         var cat = await db.ComplaintCategories.FindAsync(EditCatId);
         if (cat == null) return NotFound();
 
+        var editDepartment = await ResolveDepartmentAsync(EditDepartmentName, cat.DepartmentName);
+        if (!editDepartment.Valid)
+        {
+            TempData["Error"] = editDepartment.Error;
+            return RedirectToPage(new { editId = EditCatId });
+        }
+
         cat.Name            = EditName.Trim();
-        cat.DepartmentName  = string.IsNullOrWhiteSpace(EditDepartmentName) ? null : EditDepartmentName.Trim();
+        cat.DepartmentName  = editDepartment.Name;
         cat.DefaultPriority = EditDefaultPriority;
         cat.SortOrder       = EditSortOrder;
         cat.IsActive        = EditIsActive;
@@ -193,6 +213,20 @@ public class CategoriesModel(AppDbContext db, IAuditService auditService) : Page
     private int    GetActorId()   => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
     private string GetActorCode() => User.FindFirstValue("EmployeeCode") ?? "";
     private string GetIp()        => HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+
+    private async Task<(bool Valid, string? Name, string? Error)> ResolveDepartmentAsync(
+        string? value,
+        string? currentValue = null)
+    {
+        var name = value?.Trim();
+        if (string.IsNullOrWhiteSpace(name)) return (true, null, null);
+
+        var exists = await db.ComplaintDepartments.AnyAsync(x =>
+            x.Name == name && (x.IsActive || x.Name == currentValue));
+        return exists
+            ? (true, name, null)
+            : (false, null, "ฝ่ายที่เลือกไม่พร้อมใช้งาน กรุณาเลือกใหม่");
+    }
 
     public static string PriorityLabel(string p) => p switch
     {

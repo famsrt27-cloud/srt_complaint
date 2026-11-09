@@ -14,6 +14,7 @@ namespace SRT.Complaint.Pages.Admin;
 public class NotificationsModel(AppDbContext db, IAuditService auditService) : PageModel
 {
     public IReadOnlyList<NotificationTemplate> Templates { get; private set; } = [];
+    public IReadOnlyList<NotificationDeliveryLog> RecentDeliveries { get; private set; } = [];
 
     [BindProperty] public int     SaveId           { get; set; }
     [BindProperty] public string? SaveEmailSubject { get; set; }
@@ -26,6 +27,10 @@ public class NotificationsModel(AppDbContext db, IAuditService auditService) : P
     {
         ViewData["Title"] = "การแจ้งเตือน";
         Templates = await db.NotificationTemplates.OrderBy(t => t.Id).ToListAsync();
+        RecentDeliveries = await db.NotificationDeliveryLogs.AsNoTracking()
+            .OrderByDescending(x => x.AttemptedAt)
+            .Take(50)
+            .ToListAsync();
     }
 
     public async Task<IActionResult> OnPostSaveTemplateAsync()

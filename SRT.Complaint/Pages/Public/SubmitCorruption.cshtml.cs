@@ -23,17 +23,34 @@ public class SubmitCorruptionModel(
 
     [BindProperty] public CorruptionInputModel Input { get; set; } = new();
     public ComplaintTerms? Terms { get; private set; }
+    public string CurrentTermsVersion => Terms?.UpdatedAt.ToUniversalTime().ToString("O") ?? string.Empty;
+    public bool ShowTermsDialog => Terms is { IsActive: true } &&
+        (!Input.AcceptedTerms || !string.Equals(Input.TermsVersion, CurrentTermsVersion, StringComparison.Ordinal));
 
     public async Task OnGetAsync()
     {
         ViewData["Title"] = "แจ้งเบาะแสทุจริต";
         Terms = await termsService.GetTermsAsync();
+        Input.TermsVersion = CurrentTermsVersion;
     }
 
     [EnableRateLimiting("SubmitPolicy")]
     public async Task<IActionResult> OnPostAsync()
     {
         ViewData["Title"] = "แจ้งเบาะแสทุจริต";
+
+        Terms = await termsService.GetTermsAsync();
+        if (Terms is { IsActive: true })
+        {
+            if (!Input.AcceptedTerms)
+                ModelState.AddModelError("Input.AcceptedTerms", "กรุณาอ่านและยอมรับหลักเกณฑ์ก่อนแจ้งเบาะแส");
+            if (!string.Equals(Input.TermsVersion, CurrentTermsVersion, StringComparison.Ordinal))
+            {
+                Input.AcceptedTerms = false;
+                Input.TermsVersion = CurrentTermsVersion;
+                ModelState.AddModelError("Input.AcceptedTerms", "หลักเกณฑ์มีการปรับปรุง กรุณาอ่านและยอมรับฉบับล่าสุดอีกครั้ง");
+            }
+        }
 
         if (!ModelState.IsValid)
             return Page();
@@ -143,4 +160,8 @@ public class CorruptionInputModel
     public string Description { get; set; } = "";
 
     public List<IFormFile>? Attachments { get; set; }
+
+    public bool AcceptedTerms { get; set; }
+
+    public string TermsVersion { get; set; } = string.Empty;
 }

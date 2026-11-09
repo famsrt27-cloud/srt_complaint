@@ -24,11 +24,11 @@
 
 @if (TempData["Success"] is string success)
 {
-    <div role="status" class="mb-5 rounded-xl border border-green-200 bg-green-50 p-4 text-sm text-green-800">@success</div>
+    <div hidden data-swal-toast="success">@success</div>
 }
 @if (TempData["Error"] is string error)
 {
-    <div role="alert" class="mb-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">@error</div>
+    <div hidden data-swal-toast="error">@error</div>
 }
 
 @if (!string.IsNullOrEmpty(Model.NewRawKey))
@@ -49,6 +49,15 @@
                     </button>
                 </div>
                 <p id="copyStatus" class="mt-2 min-h-5 text-sm font-medium text-green-800" aria-live="polite"></p>
+                <div class="mt-4 rounded-xl border border-green-200 bg-white p-4">
+                    <h3 class="text-sm font-semibold text-green-950">ขั้นตอนนำคีย์ไปใช้งาน</h3>
+                    <ol class="mt-2 list-decimal space-y-1 pl-5 text-sm text-green-900">
+                        <li>เก็บคีย์ใน Secret Manager ของระบบคู่เชื่อมต่อ</li>
+                        <li>ส่งคีย์ผ่าน Header <code class="rounded bg-green-50 px-1 font-mono">X-API-Key</code> ทุกครั้ง</li>
+                        <li>ทดสอบอ่าน <a href="~/openapi/v1.json" target="_blank" rel="noopener" class="font-semibold underline">OpenAPI v1</a> และเรียก endpoint ที่ได้รับสิทธิ์ใน Sandbox ก่อน</li>
+                        <li>ตั้งค่าการเฝ้าระวังอัตราเรียกและวันหมดอายุของคีย์</li>
+                    </ol>
+                </div>
             </div>
         </div>
     </section>
@@ -185,7 +194,9 @@
                 @if (status is "active" or "expiring")
                 {
                     <div class="mt-4 flex flex-wrap items-start justify-end gap-2 border-t border-gray-100 pt-4">
-                        <form method="post" asp-page-handler="Rotate" onsubmit="return confirm('สร้างคีย์ใหม่และให้คีย์เดิมใช้ต่อได้อีก 7 วัน?')">
+                        <form method="post" asp-page-handler="Rotate"
+                              data-confirm="สร้างคีย์ใหม่และให้คีย์เดิมใช้ต่อได้อีก 7 วัน?"
+                              data-confirm-title="หมุนเวียน API Key" data-confirm-text="สร้างคีย์ใหม่">
                             @Html.AntiForgeryToken()
                             <input type="hidden" name="RotateId" value="@key.Id" />
                             <button type="submit" class="min-h-11 rounded-lg border border-amber-300 bg-amber-50 px-4 text-sm font-medium text-amber-800 hover:bg-amber-100">Rotate Key</button>
@@ -288,7 +299,7 @@
                     <div class="mt-2 flex flex-wrap gap-2" role="group" aria-label="ชุดสิทธิ์สำเร็จรูป">
                         <button type="button" data-preset="submit" class="min-h-11 rounded-lg border border-gray-300 px-3 text-sm hover:border-srt-navy hover:bg-blue-50">ส่งเรื่องอย่างเดียว</button>
                         <button type="button" data-preset="track" class="min-h-11 rounded-lg border border-gray-300 px-3 text-sm hover:border-srt-navy hover:bg-blue-50">ส่งและติดตาม</button>
-                        <button type="button" data-preset="twoway" class="min-h-11 rounded-lg border border-gray-300 px-3 text-sm hover:border-srt-navy hover:bg-blue-50">เชื่อมต่อสองทาง</button>
+                        <button type="button" data-preset="twoway" class="min-h-11 rounded-lg border border-gray-300 px-3 text-sm hover:border-srt-navy hover:bg-blue-50">ส่งเรื่อง + อ่านผล + Webhook</button>
                         <button type="button" data-preset="report" class="min-h-11 rounded-lg border border-gray-300 px-3 text-sm hover:border-srt-navy hover:bg-blue-50">รายงานสถิติ</button>
                     </div>
                 </div>
@@ -307,11 +318,23 @@
                                 <input type="checkbox" name="NewScopes" value="@scope.Value" data-scope="@scope.Value" data-group="@scope.Group"
                                        class="mt-1 h-4 w-4 rounded border-gray-300 text-srt-navy focus:ring-srt-navy" />
                             }
-                            <span><span class="block text-sm font-medium text-gray-800">@scope.Label</span><span class="block text-xs text-gray-500">@scope.Description · <code>@scope.Value</code></span></span>
+                            <span>
+                                <span class="block text-sm font-medium text-gray-800">
+                                    @scope.Label
+                                    @if (scope.Group is "update" or "sensitive")
+                                    {
+                                        <span class="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">สิทธิ์เสี่ยงสูง</span>
+                                    }
+                                </span>
+                                <span class="block text-xs text-gray-500">@scope.Description · <code>@scope.Value</code></span>
+                            </span>
                         </label>
                     }
                 </div>
                 <span asp-validation-for="NewScopes" class="mt-2 block text-xs text-red-600"></span>
+                <p id="internalOnlyHint" class="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                    คีย์ External ไม่สามารถใช้สิทธิ์อัปเดตสถานะ อ่านข้อมูลทั้งหมด หรือดูสถิติทุจริตได้ หากจำเป็นต้องใช้ต้องผ่านการอนุมัติเป็น Internal
+                </p>
                 <div class="mt-4">
                     <label asp-for="NewDataAccessMode" class="block text-sm font-medium text-gray-700">ขอบเขตข้อมูล</label>
                     <select asp-for="NewDataAccessMode" id="NewDataAccessMode" class="mt-1 min-h-11 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-srt-navy focus:outline-none md:w-1/2">
@@ -349,6 +372,7 @@
             <div class="rounded-xl border border-blue-200 bg-blue-50 p-4">
                 <h3 class="text-sm font-semibold text-blue-900"><span class="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-srt-navy text-xs text-white">4</span>ตรวจสอบก่อนสร้าง</h3>
                 <p class="mt-2 text-sm text-blue-800">หลังสร้างแล้วจะเปลี่ยน Partner, Environment, Scope และขอบเขตข้อมูลไม่ได้ หากต้องการเปลี่ยนให้สร้างคีย์ใหม่แล้ว Rotate คีย์เดิม</p>
+                <div id="scopeSummary" class="mt-3 rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm text-gray-800" aria-live="polite"></div>
             </div>
         </div>
 
@@ -363,7 +387,7 @@
     const presets = {
         submit: ['metadata:read', 'complaints:write'],
         track: ['metadata:read', 'complaints:write', 'complaints:status'],
-        twoway: ['metadata:read', 'complaints:write', 'complaints:status', 'complaints:read', 'complaints:update', 'webhooks:manage'],
+        twoway: ['metadata:read', 'complaints:write', 'complaints:status', 'complaints:read', 'webhooks:manage'],
         report: ['metadata:read', 'stats:summary', 'stats:detailed']
     };
     document.querySelectorAll('[data-preset]').forEach(button => button.addEventListener('click', () => {
@@ -371,11 +395,13 @@
         document.querySelectorAll('[data-scope]').forEach(input => input.checked = selected.includes(input.value));
         document.querySelectorAll('[data-preset]').forEach(item => item.classList.remove('border-srt-navy', 'bg-blue-50'));
         button.classList.add('border-srt-navy', 'bg-blue-50');
+        updateScopeSummary();
     }));
 
     const keyType = document.getElementById('NewKeyType');
     const access = document.getElementById('NewDataAccessMode');
     const sensitive = document.querySelector('[data-scope="corruption:stats"]');
+    const statusUpdate = document.querySelector('[data-scope="complaints:update"]');
     function enforceKeyType() {
         const external = keyType?.value === 'External';
         if (access) {
@@ -387,9 +413,32 @@
             if (external) sensitive.checked = false;
             sensitive.closest('label')?.classList.toggle('opacity-50', external);
         }
+        if (statusUpdate) {
+            statusUpdate.disabled = external;
+            if (external) statusUpdate.checked = false;
+            statusUpdate.closest('label')?.classList.toggle('opacity-50', external);
+        }
+        document.getElementById('internalOnlyHint')?.classList.toggle('hidden', !external);
+        updateScopeSummary();
     }
     keyType?.addEventListener('change', enforceKeyType);
     enforceKeyType();
+
+    function updateScopeSummary() {
+        const selected = Array.from(document.querySelectorAll('[data-scope]:checked:not(:disabled)'));
+        const labels = selected.map(input => input.closest('label')?.querySelector('.block.text-sm')?.childNodes[0]?.textContent?.trim())
+            .filter(Boolean);
+        const mode = access?.value === 'All' ? 'ข้อมูลทั้งหมด' : 'เฉพาะข้อมูลของ Partner นี้';
+        const type = keyType?.value === 'Internal' ? 'ระบบภายใน' : 'ระบบภายนอก';
+        const target = document.getElementById('scopeSummary');
+        if (!target) return;
+        target.textContent = labels.length
+            ? `คีย์สำหรับ${type} · ${mode} · ทำได้: ${labels.join(', ')}`
+            : `คีย์สำหรับ${type} · ${mode} · ยังไม่ได้เลือกสิทธิ์`;
+    }
+    document.querySelectorAll('[data-scope]').forEach(input => input.addEventListener('change', updateScopeSummary));
+    access?.addEventListener('change', updateScopeSummary);
+    updateScopeSummary();
 
     document.getElementById('copyRawKey')?.addEventListener('click', async event => {
         const status = document.getElementById('copyStatus');

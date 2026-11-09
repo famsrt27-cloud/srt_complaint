@@ -86,11 +86,13 @@ public class ComplaintServiceUpdate2Tests
     }
 
     [Fact]
-    public async Task CloseAsync_FromInProgress_ClosesCaseAndStoresPublicSummary()
+    public async Task CloseAsync_FromSummaryStep_ClosesCaseAndStoresPublicSummary()
     {
         await using var db = TestHelpers.CreateAppDbContext();
         db.ComplaintCategories.Add(new ComplaintCategory { Id = 1, Name = "บริการ", IsActive = true });
-        db.Complaints.Add(Complaint(1, "SRT-COMPL-2569-0001", "InProgress", new DateTime(2026, 1, 2), "รายละเอียด"));
+        var pendingSummary = Complaint(1, "SRT-COMPL-2569-0001", "InProgress", new DateTime(2026, 1, 2), "รายละเอียด");
+        pendingSummary.WorkflowStep = ComplaintWorkflowSteps.Summary;
+        db.Complaints.Add(pendingSummary);
         await db.SaveChangesAsync();
 
         var service = CreateService(db, out _, out var webhook);
@@ -104,14 +106,15 @@ public class ComplaintServiceUpdate2Tests
         Assert.NotNull(complaint);
         Assert.Equal("Closed", complaint.Status);
         Assert.NotNull(complaint.ClosedAt);
-        Assert.Contains(notes, note => note.NoteType == "StatusChange" && note.Content == "InProgress→Closed");
+        Assert.Contains(notes, note => note.NoteType == "StatusChange" && note.Content == "InProgress→Resolved");
+        Assert.Contains(notes, note => note.NoteType == "StatusChange" && note.Content == "Resolved→Closed");
         Assert.Contains(notes, note => note.NoteType == "PublicReply" && note.Content == summary);
         webhook.Verify(item => item.QueueAsync(
             "complaint.closed", It.IsAny<object>(), null, default), Times.Once);
     }
 
     [Fact]
-    public async Task CloseAsync_FromPending_IsRejected()
+    public async Task CloseAsync_BeforeSummaryStep_IsRejected()
     {
         await using var db = TestHelpers.CreateAppDbContext();
         db.ComplaintCategories.Add(new ComplaintCategory { Id = 1, Name = "บริการ", IsActive = true });
@@ -122,7 +125,7 @@ public class ComplaintServiceUpdate2Tests
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.CloseAsync(1, "สรุปผล", 99));
-        Assert.Equal("ปิดงานได้เฉพาะเรื่องที่กำลังดำเนินการ", exception.Message);
+        Assert.Equal("ต้องผ่านขั้นตรวจสอบข้อเท็จจริงและอยู่ในขั้นสรุปผลก่อน", exception.Message);
     }
 
     [Fact]
@@ -130,7 +133,9 @@ public class ComplaintServiceUpdate2Tests
     {
         await using var db = TestHelpers.CreateAppDbContext();
         db.ComplaintCategories.Add(new ComplaintCategory { Id = 1, Name = "บริการ", IsActive = true });
-        db.Complaints.Add(Complaint(1, "SRT-COMPL-2569-0001", "InProgress", new DateTime(2026, 1, 2), "รายละเอียด"));
+        var complaintToResolve = Complaint(1, "SRT-COMPL-2569-0001", "InProgress", new DateTime(2026, 1, 2), "รายละเอียด");
+        complaintToResolve.WorkflowStep = ComplaintWorkflowSteps.Summary;
+        db.Complaints.Add(complaintToResolve);
         await db.SaveChangesAsync();
 
         var service = CreateService(db, out _, out var webhook);

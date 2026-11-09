@@ -91,16 +91,46 @@
         },
         {
           "name": "Get status",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200 && pm.response.headers.has('ETag')) {",
+                  "  pm.environment.set('complaintEtag', pm.response.headers.get('ETag'));",
+                  "}"
+                ]
+              }
+            }
+          ],
           "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/complaints/{{referenceNumber}}/status" }
         },
         {
-          "name": "Update status",
+          "name": "Update status (Internal only)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200 && pm.response.headers.has('ETag')) {",
+                  "  pm.environment.set('complaintEtag', pm.response.headers.get('ETag'));",
+                  "}"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "PUT",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "description": "ใช้ได้เฉพาะ Internal API key และต้องผ่าน workflow transition policy",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "If-Match", "value": "{{complaintEtag}}" }
+            ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"newStatus\": \"InProgress\",\n  \"note\": \"ระบบปลายทางรับเรื่องและเริ่มดำเนินการแล้ว\"\n}"
+              "raw": "{\n  \"newStatus\": \"{{newStatus}}\",\n  \"note\": \"ดำเนินการตาม workflow ที่อนุมัติแล้ว\"\n}"
             },
             "url": "{{baseUrl}}/api/v1/complaints/{{referenceNumber}}/status"
           }
@@ -171,6 +201,8 @@
   ],
   "variable": [
     { "key": "baseUrl", "value": "https://sandbox.example.go.th" },
-    { "key": "apiKey", "value": "" }
+    { "key": "apiKey", "value": "" },
+    { "key": "complaintEtag", "value": "" },
+    { "key": "newStatus", "value": "Resolved" }
   ]
 }

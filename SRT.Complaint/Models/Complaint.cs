@@ -1,4 +1,6 @@
 #nullable enable
+using System.ComponentModel.DataAnnotations;
+
 namespace SRT.Complaint.Models;
 
 public class Complaint
@@ -28,15 +30,22 @@ public class Complaint
     public string? ExternalId     { get; set; }
     public string Priority { get; set; } = "Normal";
     public string Status { get; set; } = "Pending";
+    public string WorkflowStep { get; set; } = ComplaintWorkflowSteps.Received;
+    public DateTime WorkflowUpdatedAt { get; set; } = DateTime.UtcNow;
+    public string? ResolutionSummary { get; set; }
     public int? AssignedToId { get; set; }
     public DateTime? AssignedAt { get; set; }
 
     public DateTime? SlaDeadline { get; set; }
     public bool SlaBreached { get; set; }
+    public DateTime? SlaWarningSentAt { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? ClosedAt { get; set; }
+
+    [Timestamp]
+    public byte[] RowVersion { get; set; } = [];
 
     public byte? SatisfactionScore { get; set; }
     public string? SatisfactionNote { get; set; }
@@ -48,4 +57,5 @@ public class Complaint
     public ICollection<ComplaintAttachment> Attachments { get; set; } = new List<ComplaintAttachment>();
     public ICollection<ComplaintNote> Notes { get; set; } = new List<ComplaintNote>();
     public ICollection<ComplaintTransferLog> TransferLogs { get; set; } = new List<ComplaintTransferLog>();
+    public ICollection<ComplaintAcceptanceEvidence> AcceptanceEvidence { get; set; } = new List<ComplaintAcceptanceEvidence>();
 }

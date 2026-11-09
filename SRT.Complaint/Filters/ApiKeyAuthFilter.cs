@@ -3,7 +3,8 @@ using System.Diagnostics;
 using System.Net;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
-using Microsoft.Extensions.Caching.Memory;
+using Microsoft.AspNetCore.Mvc.Infrastructure;
+using Microsoft.Extensions.Options;
 using SRT.Complaint.Models;
 using SRT.Complaint.Services;
 
@@ -12,7 +13,9 @@ namespace SRT.Complaint.Filters;
 public class ApiKeyAuthFilter(
     IApiKeyService apiKeyService,
     IApiRequestLogService logService,
-    IMemoryCache cache,
+    IApiRateLimitStore rateLimitStore,
+    ApiRateLimitStore emergencyRateLimitStore,
+    IOptions<DistributedRuntimeOptions> distributedOptions,
     ILogger<ApiKeyAuthFilter> logger) : IAsyncActionFilter, IOrderedFilter
 {
     public int Order => -3000;
@@ -26,18 +29,18 @@ public class ApiKeyAuthFilter(
             return;
         }
 
-        var apiKey = await apiKeyService.ValidateAsync(rawKey!);
+        var apiKey = await apiKeyService.ValidateAsync(
+            rawKey.ToString(), context.HttpContext.RequestAborted);
         if (apiKey == null)
         {
             context.Result = new UnauthorizedObjectResult(ApiError(context, "invalid_api_key", "Invalid or expired API key"));
             return;
         }
 
-        // IP whitelist
         if (!string.IsNullOrWhiteSpace(apiKey.AllowedIps))
         {
             var clientIp = context.HttpContext.Connection.RemoteIpAddress?.ToString() ?? "";
-            var allowed  = apiKey.AllowedIps
+            var allowed = apiKey.AllowedIps
                 .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             if (!allowed.Any(ip => MatchesIp(clientIp, ip)))
             {
@@ -47,32 +50,58 @@ public class ApiKeyAuthFilter(
             }
         }
 
-        // Rate limit — fixed window per minute (atomic increment)
-        var cacheKey = $"ratelimit:{apiKey.Id}:{DateTime.UtcNow:yyyyMMddHHmm}";
-        var bucket = cache.GetOrCreate(cacheKey, entry =>
-        {
-            entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(2);
-            return new RateLimitBucket();
-        })!;
-        await bucket.Gate.WaitAsync(context.HttpContext.RequestAborted);
+        // Fixed window per API key. The selected store is local, Redis-distributed,
+        // or a defense-in-depth local limiter when the gateway owns the global quota.
+        var now = DateTimeOffset.UtcNow;
+        var effectiveLimit = apiKey.RateLimitPerMin;
+        ApiRateLimitResult rateLimit;
         try
         {
-            if (bucket.Count >= apiKey.RateLimitPerMin)
+            rateLimit = await rateLimitStore.AcquireAsync(
+                apiKey.Id, apiKey.RateLimitPerMin, now, context.HttpContext.RequestAborted);
+        }
+        catch (DistributedRateLimitUnavailableException)
+        {
+            if (!IsSafeReadMethod(context.HttpContext.Request.Method))
             {
-                context.HttpContext.Response.Headers.RetryAfter = "60";
-                context.Result = new ObjectResult(ApiError(context, "rate_limit_exceeded", "Rate limit exceeded")) { StatusCode = 429 };
-                await LogRequestAsync(context, apiKey, 429, 0);
+                context.HttpContext.Response.Headers.RetryAfter = "5";
+                context.Result = new ObjectResult(ApiError(
+                    context,
+                    "rate_limit_unavailable",
+                    "Write requests are temporarily unavailable because quota enforcement cannot be verified"))
+                {
+                    StatusCode = StatusCodes.Status503ServiceUnavailable
+                };
+                await LogRequestAsync(context, apiKey, StatusCodes.Status503ServiceUnavailable, 0);
                 return;
             }
-            bucket.Count++;
+
+            var emergencyLimit = Math.Clamp(
+                distributedOptions.Value.EmergencyReadLimitPerMin,
+                1,
+                Math.Max(1, apiKey.RateLimitPerMin));
+            effectiveLimit = emergencyLimit;
+            rateLimit = await emergencyRateLimitStore.AcquireAsync(
+                apiKey.Id, emergencyLimit, now, context.HttpContext.RequestAborted);
+            logger.LogWarning(
+                "Using emergency local read limit {EmergencyLimit} for API key id {ApiKeyId}",
+                emergencyLimit,
+                apiKey.Id);
         }
-        finally
+
+        context.HttpContext.Response.Headers["X-RateLimit-Limit"] = effectiveLimit.ToString();
+        context.HttpContext.Response.Headers["X-RateLimit-Remaining"] = rateLimit.Remaining.ToString();
+        context.HttpContext.Response.Headers["X-RateLimit-Reset"] = rateLimit.ResetAt.ToUnixTimeSeconds().ToString();
+        if (!rateLimit.IsAllowed)
         {
-            bucket.Gate.Release();
+            var retryAfter = Math.Max(1, (int)Math.Ceiling((rateLimit.ResetAt - now).TotalSeconds));
+            context.HttpContext.Response.Headers.RetryAfter = retryAfter.ToString();
+            context.Result = new ObjectResult(ApiError(context, "rate_limit_exceeded", "Rate limit exceeded")) { StatusCode = 429 };
+            await LogRequestAsync(context, apiKey, 429, 0);
+            return;
         }
 
         context.HttpContext.Items["ApiKey"] = apiKey;
-        context.HttpContext.Response.Headers["X-RateLimit-Limit"] = apiKey.RateLimitPerMin.ToString();
 
         var sw = Stopwatch.StartNew();
         var executed = await next();
@@ -82,12 +111,10 @@ public class ApiKeyAuthFilter(
         await LogRequestAsync(context, apiKey, statusCode, (int)sw.ElapsedMilliseconds);
     }
 
-    private static int ResolveStatusCode(IActionResult? result, int fallback) => result switch
-    {
-        ObjectResult objectResult         => objectResult.StatusCode ?? fallback,
-        StatusCodeResult statusCodeResult => statusCodeResult.StatusCode,
-        _                                 => fallback
-    };
+    internal static int ResolveStatusCode(IActionResult? result, int fallback) =>
+        result is IStatusCodeActionResult statusCodeResult
+            ? statusCodeResult.StatusCode ?? fallback
+            : fallback;
 
     private async Task LogRequestAsync(ActionExecutingContext context, ApiKey apiKey, int statusCode, int durationMs)
     {
@@ -110,7 +137,8 @@ public class ApiKeyAuthFilter(
         if (clientAddr.IsIPv4MappedToIPv6) clientAddr = clientAddr.MapToIPv4();
 
         if (!allowedEntry.Contains('/'))
-            return IPAddress.TryParse(allowedEntry, out var allowedAddress) && clientAddr.Equals(allowedAddress.IsIPv4MappedToIPv6 ? allowedAddress.MapToIPv4() : allowedAddress);
+            return IPAddress.TryParse(allowedEntry, out var allowedAddress) &&
+                   clientAddr.Equals(allowedAddress.IsIPv4MappedToIPv6 ? allowedAddress.MapToIPv4() : allowedAddress);
 
         var parts = allowedEntry.Split('/');
         if (parts.Length != 2) return false;
@@ -118,13 +146,13 @@ public class ApiKeyAuthFilter(
         if (networkAddr.IsIPv4MappedToIPv6) networkAddr = networkAddr.MapToIPv4();
         if (!int.TryParse(parts[1], out var prefixLen)) return false;
 
-        var clientBytes  = clientAddr.GetAddressBytes();
+        var clientBytes = clientAddr.GetAddressBytes();
         var networkBytes = networkAddr.GetAddressBytes();
         if (clientBytes.Length != networkBytes.Length) return false;
         if (prefixLen < 0 || prefixLen > clientBytes.Length * 8) return false;
 
         var fullBytes = prefixLen / 8;
-        var remBits   = prefixLen % 8;
+        var remBits = prefixLen % 8;
 
         for (var i = 0; i < fullBytes; i++)
             if (clientBytes[i] != networkBytes[i]) return false;
@@ -137,6 +165,9 @@ public class ApiKeyAuthFilter(
         return true;
     }
 
+    private static bool IsSafeReadMethod(string method) =>
+        HttpMethods.IsGet(method) || HttpMethods.IsHead(method) || HttpMethods.IsOptions(method);
+
     private static object ApiError(ActionExecutingContext context, string code, string message) => new
     {
         error = new
@@ -146,10 +177,4 @@ public class ApiKeyAuthFilter(
             traceId = context.HttpContext.TraceIdentifier
         }
     };
-
-    private sealed class RateLimitBucket
-    {
-        public SemaphoreSlim Gate { get; } = new(1, 1);
-        public int Count { get; set; }
-    }
 }

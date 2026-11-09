@@ -4,6 +4,43 @@
     ViewData["Title"] = "การแจ้งเตือน";
 }
 
+<div class="page-header">
+    <div>
+        <p class="admin-page-eyebrow">การสื่อสารกับประชาชน</p>
+        <h1 class="page-title">การแจ้งเตือน</h1>
+        <p class="page-subtitle">กำหนดข้อความต้นแบบสำหรับ SMS อีเมล และเหตุการณ์สำคัญของคำร้อง</p>
+    </div>
+</div>
+
+<section class="mt-6 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm" aria-labelledby="delivery-log-title">
+    <div class="border-b border-slate-200 px-5 py-4">
+        <h2 id="delivery-log-title" class="text-sm font-semibold text-slate-900">ประวัติการส่งล่าสุด</h2>
+        <p class="mt-1 text-xs text-slate-500">แสดง 50 รายการล่าสุด โดยปิดบังข้อมูลผู้รับ</p>
+    </div>
+    <div class="overflow-x-auto">
+        <table class="w-full min-w-[760px] text-sm">
+            <thead class="bg-slate-50 text-left text-xs text-slate-600"><tr><th class="px-4 py-3">เวลา</th><th class="px-4 py-3">เหตุการณ์</th><th class="px-4 py-3">ช่องทาง</th><th class="px-4 py-3">ผู้รับ</th><th class="px-4 py-3">สถานะ</th><th class="px-4 py-3">รายละเอียด</th></tr></thead>
+            <tbody class="divide-y divide-slate-100">
+                @if (!Model.RecentDeliveries.Any())
+                {
+                    <tr><td colspan="6" class="px-4 py-8 text-center text-slate-400">ยังไม่มีประวัติการส่ง</td></tr>
+                }
+                @foreach (var item in Model.RecentDeliveries)
+                {
+                    <tr>
+                        <td class="whitespace-nowrap px-4 py-3 text-xs text-slate-500">@item.AttemptedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
+                        <td class="px-4 py-3 font-mono text-xs">@item.EventKey</td>
+                        <td class="px-4 py-3">@item.Channel</td>
+                        <td class="px-4 py-3 font-mono text-xs">@item.RecipientMasked</td>
+                        <td class="px-4 py-3"><span class="rounded-full px-2 py-1 text-xs font-semibold @(item.Status == "Success" ? "bg-green-100 text-green-700" : item.Status == "Failed" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700")">@item.Status</span></td>
+                        <td class="max-w-md px-4 py-3 text-xs text-slate-500">@(item.ErrorMessage ?? "-")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</section>
+
 <div class="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-5 text-sm text-amber-800 flex gap-2">
     <svg class="w-4 h-4 shrink-0 mt-0.5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"

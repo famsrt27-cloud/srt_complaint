@@ -12,11 +12,29 @@
     var hasPrivacyChoice = ReporterPrivacyChoices.IsValid(c.ReporterPrivacyChoice);
     var now = DateTime.UtcNow;
     var slaBreached = c.SlaBreached || (c.SlaDeadline.HasValue && c.SlaDeadline < now);
+    var workflowNumber = ComplaintWorkflowSteps.Number(c.WorkflowStep);
+    var displayedWorkflowNumber = Math.Min(workflowNumber, 6);
+    var latestInfoRequest = c.Notes.Where(n => n.NoteType == "InfoRequest").OrderByDescending(n => n.CreatedAt).FirstOrDefault();
+    var hasReporterReply = latestInfoRequest != null && c.Notes.Any(n => n.NoteType == "ReporterReply" && n.CreatedAt > latestInfoRequest.CreatedAt);
+
+    string StepInstruction(int step) => step switch
+    {
+        1 => "รับเรื่องและยืนยันว่าคุณเป็นผู้รับผิดชอบ ก่อนเริ่มตรวจข้อมูล",
+        2 => "ตรวจข้อมูลผู้ร้อง รายละเอียดเหตุการณ์ ช่องทางติดต่อ และเอกสารว่าครบถ้วน",
+        3 => "ตรวจและบันทึกประเภทเรื่อง ฝ่ายรับผิดชอบ ผู้รับผิดชอบ และกำหนด SLA",
+        4 => "บันทึกสิ่งที่ตรวจสอบ การดำเนินการ ผลที่พบ และหลักฐานประกอบ",
+        5 => "เรียบเรียงผลดำเนินการเป็นข้อความที่ชัดเจนและปลอดภัยสำหรับแจ้งผู้ร้อง",
+        6 => "ตรวจข้อความครั้งสุดท้าย แล้วแจ้งผลและปิดเรื่อง",
+        _ => "ตรวจสอบความครบถ้วนของงาน"
+    };
 
     string StatusColor(string s) => s switch
     {
         "Pending" => "bg-amber-100 text-amber-800 border-amber-200",
         "InProgress" => "bg-blue-100 text-blue-800 border-blue-200",
+        "WaitingInfo" => "bg-amber-100 text-amber-800 border-amber-200",
+        "Forwarded" => "bg-purple-100 text-purple-800 border-purple-200",
+        "UnderReview" => "bg-indigo-100 text-indigo-800 border-indigo-200",
         "Resolved" => "bg-blue-100 text-blue-800 border-blue-200",
         "Closed" => "bg-gray-200 text-gray-700 border-gray-300",
         "Rejected" => "bg-red-100 text-red-800 border-red-200",
@@ -52,7 +70,9 @@
 <!-- ══ Page Header ══ -->
 <div class="flex items-center justify-between mb-5">
     <div class="flex items-center gap-3">
-        <a asp-page="/Staff/Queue" class="text-gray-400 hover:text-gray-600 transition">
+        <a asp-page="/Staff/Queue"
+           aria-label="กลับไปหน้าคิวเรื่องร้องเรียน"
+           class="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-srt-navy transition">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
             </svg>
@@ -66,14 +86,19 @@
         </span>
         @if (slaBreached)
         {
-            <span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-600 text-white">⚠ เกิน SLA</span>
+            <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-600 text-white">
+                <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v4m0 4h.01M10.3 3.6L2.4 17.3A2 2 0 004.1 20h15.8a2 2 0 001.7-2.7L13.7 3.6a2 2 0 00-3.4 0z" />
+                </svg>
+                เกิน SLA
+            </span>
         }
     </div>
     <div class="flex items-center gap-3">
         <span class="text-xs text-gray-400">
             รับเมื่อ @c.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
         </span>
-        <button type="button" onclick="document.getElementById('pdf-modal').classList.remove('hidden')" class="inline-flex items-center gap-1.5 text-xs text-srt-navy border border-srt-navy/30
+        <button type="button" id="pdf-modal-open" onclick="openPdfModal()" class="inline-flex min-h-11 items-center gap-1.5 text-xs text-srt-navy border border-srt-navy/30
             px-3 py-1.5 rounded-lg hover:bg-srt-navy hover:text-white transition">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -96,10 +121,10 @@
 
         <!-- Modal ดาวน์โหลด PDF ตามตัวเลือกที่ผู้ร้องบันทึกไว้ -->
         <div id="pdf-modal"
-             class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
-             onclick="if(event.target===this)this.classList.add('hidden')">
-            <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6">
-                <h3 class="text-base font-semibold text-gray-900 mb-1">ดาวน์โหลด PDF</h3>
+             class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm overscroll-contain"
+             role="dialog" aria-modal="true" aria-labelledby="pdf-modal-title" tabindex="-1">
+            <div class="max-h-[90vh] overflow-y-auto bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6">
+                <h3 id="pdf-modal-title" class="text-base font-semibold text-gray-900 mb-1">ดาวน์โหลด PDF</h3>
                 <p class="text-sm text-gray-500 mb-4">
                     ระบบกำหนดรูปแบบเอกสารจากตัวเลือกที่ผู้ร้องบันทึกไว้
                 </p>
@@ -176,7 +201,7 @@
                     </button>
                 </form>
 
-                <button type="button" onclick="document.getElementById('pdf-modal').classList.add('hidden')"
+                <button type="button" id="pdf-modal-close" onclick="closePdfModal()"
                         class="mt-4 w-full min-h-11 text-sm text-gray-500 hover:text-gray-700 transition">
                             ยกเลิก
                         </button>
@@ -187,6 +212,39 @@
         </div>
 
         <script>
+            let pdfModalPreviousFocus = null;
+            function openPdfModal() {
+                const modal = document.getElementById('pdf-modal');
+                pdfModalPreviousFocus = document.activeElement;
+                modal.classList.remove('hidden');
+                document.getElementById('pdf-department')?.focus();
+            }
+            function closePdfModal() {
+                document.getElementById('pdf-modal').classList.add('hidden');
+                pdfModalPreviousFocus?.focus();
+            }
+            document.addEventListener('keydown', function (event) {
+                const modal = document.getElementById('pdf-modal');
+                if (!modal || modal.classList.contains('hidden')) return;
+                if (event.key === 'Escape') {
+                    event.preventDefault();
+                    closePdfModal();
+                    return;
+                }
+                if (event.key !== 'Tab') return;
+                const focusable = Array.from(modal.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href]'));
+                if (!focusable.length) return;
+                const first = focusable[0];
+                const last = focusable[focusable.length - 1];
+                if (event.shiftKey && document.activeElement === first) {
+                    event.preventDefault();
+                    last.focus();
+                } else if (!event.shiftKey && document.activeElement === last) {
+                    event.preventDefault();
+                    first.focus();
+                }
+            });
+
             function togglePdfDepartmentOther(select) {
                 const wrapper = document.getElementById('pdf-department-other-wrapper');
                 const input = document.getElementById('pdf-department-other');
@@ -196,6 +254,300 @@
                 if (!isOther) input.value = '';
             }
         </script>
+
+        <!-- ══ Guided workflow timeline ══ -->
+        <section class="mb-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm"
+                 aria-labelledby="workflow-title">
+            <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                    <h2 id="workflow-title" class="text-base font-bold text-gray-900">ขั้นตอนการดำเนินเรื่อง</h2>
+                    <p class="mt-1 text-sm text-gray-600">
+                        @(workflowNumber > 6 ? "ดำเนินการครบทุกขั้นตอนแล้ว" : $"ขั้นตอนที่ {workflowNumber} จาก 6 — {ComplaintWorkflowSteps.ThaiLabel(c.WorkflowStep)}")
+                    </p>
+                </div>
+                <span class="inline-flex w-fit rounded-full border border-srt-navy/20 bg-srt-navy-50 px-3 py-1 text-xs font-semibold text-srt-navy">
+                    @ComplaintWorkflowSteps.ThaiLabel(c.WorkflowStep)
+                </span>
+            </div>
+
+            <nav class="mt-6" aria-label="ความคืบหน้าการดำเนินเรื่อง">
+                <ol class="grid grid-cols-6 gap-1 sm:gap-3">
+                    @for (var progressStep = 1; progressStep <= 6; progressStep++)
+                    {
+                        var progressCompleted = workflowNumber > progressStep;
+                        var progressCurrent = workflowNumber == progressStep;
+                        <li class="relative flex min-w-0 flex-col items-center text-center">
+                            @if (progressStep < 6)
+                            {
+                                <span class="absolute left-1/2 top-4 h-0.5 w-full @(progressCompleted ? "bg-emerald-500" : "bg-slate-200")" aria-hidden="true"></span>
+                            }
+                            <span class="relative z-10 flex h-8 w-8 items-center justify-center rounded-full border-2 text-xs font-bold transition-colors
+                                         @(progressCompleted ? "border-emerald-600 bg-emerald-600 text-white" : progressCurrent ? "border-srt-navy bg-white text-srt-navy ring-4 ring-srt-navy/10" : "border-slate-300 bg-white text-slate-500")"
+                                  aria-hidden="true">
+                                @if (progressCompleted)
+                                {
+                                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" />
+                                    </svg>
+                                }
+                                else
+                                {
+                                    @progressStep
+                                }
+                            </span>
+                            <span class="mt-2 hidden max-w-28 text-xs leading-5 lg:block @(progressCurrent ? "font-semibold text-srt-navy" : progressCompleted ? "text-emerald-700" : "text-slate-500")">
+                                @ComplaintWorkflowSteps.Title(progressStep)
+                            </span>
+                            <span class="sr-only">
+                                ขั้นตอนที่ @progressStep: @ComplaintWorkflowSteps.Title(progressStep)
+                                @(progressCompleted ? "เสร็จแล้ว" : progressCurrent ? "กำลังดำเนินการ" : "ยังไม่เริ่ม")
+                            </span>
+                        </li>
+                    }
+                </ol>
+            </nav>
+
+            @if (workflowNumber > 6)
+            {
+                <div class="mt-6 flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-900">
+                    <svg class="mt-0.5 h-5 w-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <div>
+                        <p class="font-semibold">ดำเนินการครบทุกขั้นตอนแล้ว</p>
+                        <p class="mt-1 text-sm text-emerald-800">หากจำเป็นต้องดำเนินการต่อ ให้ใช้คำสั่ง “เปิดเรื่องใหม่” ระบบจะกลับไปขั้นตอนที่ 2</p>
+                    </div>
+                </div>
+            }
+
+            <ol class="mt-6">
+                @for (var step = 1; step <= 6; step++)
+                {
+                    var completed = workflowNumber > step;
+                    var current = workflowNumber == step;
+                    var locked = workflowNumber < step;
+                    <li class="@(current ? "" : "hidden") overflow-hidden rounded-2xl border border-slate-200 bg-slate-50/70">
+                        <div class="flex items-start gap-3 p-4 sm:p-6">
+                            <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold
+                                         @(completed ? "bg-green-700 text-white" : current ? "bg-srt-navy text-white" : "bg-gray-200 text-gray-600")"
+                                  aria-hidden="true">
+                                @if (completed)
+                                {
+                                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" />
+                                    </svg>
+                                }
+                                else if (locked)
+                                {
+                                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 11V7a4 4 0 00-8 0v4m-1 0h10a1 1 0 011 1v7a1 1 0 01-1 1H3a1 1 0 01-1-1v-7a1 1 0 011-1z" transform="translate(4 0)" />
+                                    </svg>
+                                }
+                                else
+                                {
+                                    @step
+                                }
+                            </span>
+                            <div class="min-w-0 flex-1">
+                                <div class="flex flex-wrap items-center justify-between gap-2">
+                                    <h3 class="text-sm font-semibold text-gray-900">@step. @ComplaintWorkflowSteps.Title(step)</h3>
+                                    <span class="text-xs font-medium @(completed ? "text-green-700" : current ? "text-srt-navy" : "text-gray-500")">
+                                        @(completed ? "เสร็จแล้ว" : current ? "กำลังดำเนินการ" : $"ต้องผ่านขั้น {step - 1} ก่อน")
+                                    </span>
+                                </div>
+
+                                @if (current && (canModify || (step == 1 && !c.AssignedToId.HasValue)))
+                                {
+                                    <div class="mt-4 border-t border-gray-200 pt-4">
+                                        <div class="mb-4 rounded-xl border border-blue-100 bg-white p-4">
+                                            <p class="text-xs font-bold uppercase tracking-wider text-srt-navy">สิ่งที่ต้องทำในขั้นนี้</p>
+                                            <p class="mt-1 text-sm leading-6 text-gray-700">@StepInstruction(step)</p>
+                                        </div>
+                                        @if (step == 1)
+                                        {
+                                            <p class="text-sm text-gray-600">กดรับเรื่องเพื่อยืนยันผู้รับผิดชอบและเริ่มตรวจสอบข้อมูล</p>
+                                            @if (!c.AssignedToId.HasValue)
+                                            {
+                                                <form method="post" asp-page-handler="Claim" asp-route-id="@c.Id" class="mt-3">
+                                                    @Html.AntiForgeryToken()
+                                                    <button type="submit" class="btn-primary min-h-11">รับเรื่องและไปขั้นถัดไป</button>
+                                                </form>
+                                            }
+                                        }
+                                        else if (step == 2)
+                                        {
+                                            @if (c.WorkflowStep == ComplaintWorkflowSteps.WaitingInfo)
+                                            {
+                                                @if (hasReporterReply)
+                                                {
+                                                    <div class="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+                                                        <p class="font-semibold">ผู้ร้องส่งข้อมูลเพิ่มเติมแล้ว</p>
+                                                        <p class="mt-1 text-emerald-800">ตรวจข้อความและไฟล์ในส่วน “ประวัติและบันทึก” แล้วดำเนินการตรวจสอบต่อ</p>
+                                                    </div>
+                                                }
+                                                else
+                                                {
+                                                    <p class="text-sm text-amber-800">ส่งคำขอให้ผู้ร้องแล้ว ขณะนี้กำลังรอข้อความหรือเอกสารเพิ่มเติม</p>
+                                                }
+                                                <form method="post" asp-page-handler="ResumeScreening" asp-route-id="@c.Id" class="mt-3">
+                                                    @Html.AntiForgeryToken()
+                                                    <button type="submit" class="btn-primary min-h-11">
+                                                        @(hasReporterReply ? "ตรวจข้อมูลแล้ว ดำเนินการต่อ" : "ได้รับข้อมูลจากช่องทางอื่น ดำเนินการต่อ")
+                                                    </button>
+                                                </form>
+                                            }
+                                            else
+                                            {
+                                                <p class="text-sm text-gray-600">ตรวจชื่อผู้ร้อง ช่องทางติดต่อ รายละเอียด และเอกสารประกอบให้ครบถ้วน</p>
+                                                <div class="mt-3 flex flex-col gap-3 sm:flex-row">
+                                                    <form method="post" asp-page-handler="CompleteScreening" asp-route-id="@c.Id">
+                                                        @Html.AntiForgeryToken()
+                                                        <button type="submit" class="btn-primary min-h-11">ข้อมูลครบถ้วน ไปขั้นถัดไป</button>
+                                                    </form>
+                                                    <form method="post" asp-page-handler="RequestMoreInfo" asp-route-id="@c.Id" class="flex-1">
+                                                        @Html.AntiForgeryToken()
+                                                        <label for="workflow-reason" class="form-label">ข้อมูลที่ต้องการเพิ่มเติม</label>
+                                                        <textarea id="workflow-reason" name="WorkflowReason" required rows="2" class="form-textarea-compact w-full" placeholder="ระบุข้อมูลหรือเอกสารที่ต้องการเพิ่ม"></textarea>
+                                                        <button type="submit" class="mt-2 min-h-11 rounded-lg border border-amber-400 px-4 py-2 text-sm font-semibold text-amber-800 hover:bg-amber-50">ขอข้อมูลเพิ่มเติม</button>
+                                                    </form>
+                                                </div>
+                                            }
+                                        }
+                                        else if (step == 3)
+                                        {
+                                            <form method="post" asp-page-handler="SaveAndCompleteClassification" asp-route-id="@c.Id" class="space-y-3">
+                                                @Html.AntiForgeryToken()
+                                                <div>
+                                                    <label for="classification-category" class="form-label">ประเภทเรื่อง</label>
+                                                    <select id="classification-category" name="ClassificationCategoryId" required class="form-select-compact min-h-11 w-full">
+                                                        @foreach (var category in Model.ClassificationCategoryOptions)
+                                                        {
+                                                            <option value="@category.Value" selected="@(category.Value == Model.ClassificationCategoryId.ToString())">@category.Text</option>
+                                                        }
+                                                    </select>
+                                                </div>
+                                                <div id="classification-subcategory-wrapper">
+                                                    <label for="classification-subcategory" class="form-label">หัวข้อย่อย</label>
+                                                    <select id="classification-subcategory" name="ClassificationSubCategoryId" class="form-select-compact min-h-11 w-full"></select>
+                                                </div>
+                                                <div>
+                                                    <label for="classification-department" class="form-label">ฝ่ายรับผิดชอบ</label>
+                                                    <select id="classification-department" name="ClassificationDepartment" class="form-select-compact min-h-11 w-full">
+                                                        <option value="">— ใช้ฝ่ายตามประเภทเรื่อง —</option>
+                                                        @foreach (var department in Model.ClassificationDepartmentOptions)
+                                                        {
+                                                            <option value="@department" selected="@(department == Model.ClassificationDepartment)">@department</option>
+                                                        }
+                                                    </select>
+                                                </div>
+                                                <div class="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600">
+                                                    ผู้รับผิดชอบ: <strong>@(c.AssignedTo?.FullName ?? "ยังไม่ได้กำหนด")</strong>
+                                                    <span class="mx-1">•</span>
+                                                    SLA: <strong>@(c.SlaDeadline?.ToLocalTime().ToString("dd/MM/yyyy HH:mm") ?? "ยังไม่ได้กำหนด")</strong>
+                                                </div>
+                                                <button type="submit" class="btn-primary min-h-11">บันทึกและเริ่มดำเนินการ</button>
+                                            </form>
+                                        }
+                                        else if (step == 4)
+                                        {
+                                            <form method="post" asp-page-handler="CompleteInvestigation" asp-route-id="@c.Id" enctype="multipart/form-data" class="space-y-3">
+                                                @Html.AntiForgeryToken()
+                                                <div>
+                                                    <label for="investigation-note" class="form-label">สิ่งที่ดำเนินการ <span class="text-red-600" aria-hidden="true">*</span></label>
+                                                    <textarea id="investigation-note" name="InvestigationNote" required maxlength="4000" rows="3" class="form-textarea-compact w-full" placeholder="เช่น ติดต่อหน่วยงาน ตรวจสอบพื้นที่ หรือประสานผู้เกี่ยวข้อง…"></textarea>
+                                                </div>
+                                                <div>
+                                                    <label for="investigation-files" class="form-label">หลักฐานประกอบ <span class="font-normal text-gray-500">(ถ้ามี)</span></label>
+                                                    <input id="investigation-files" type="file" name="InvestigationAttachments" multiple accept=".jpg,.jpeg,.png,.pdf,.doc,.docx"
+                                                           class="file-input" />
+                                                </div>
+                                                <div>
+                                                    <label for="investigation-summary" class="form-label">สรุปผลการตรวจสอบและดำเนินการ</label>
+                                                    <textarea id="investigation-summary" name="InvestigationSummary" required minlength="20" maxlength="4000" rows="4" class="form-textarea-compact w-full" placeholder="สรุปสิ่งที่ตรวจสอบ การดำเนินการ และผลที่พบ"></textarea>
+                                                </div>
+                                                <div>
+                                                    <label for="no-evidence-reason" class="form-label">เหตุผลที่ไม่มีหลักฐาน <span class="font-normal text-gray-500">(กรอกเมื่อไม่มีไฟล์แนบ)</span></label>
+                                                    <textarea id="no-evidence-reason" name="NoEvidenceReason" maxlength="1000" rows="2" class="form-textarea-compact w-full"></textarea>
+                                                </div>
+                                                <p class="text-xs text-gray-500">หากไม่มีหลักฐานแนบ ต้องระบุเหตุผลให้ชัดเจน</p>
+                                                <button type="submit" class="btn-primary min-h-11">ยืนยันผลการตรวจสอบและไปสรุปผล</button>
+                                            </form>
+                                        }
+                                        else if (step == 5)
+                                        {
+                                            <form method="post" asp-page-handler="PrepareClosure" asp-route-id="@c.Id" class="space-y-3">
+                                                @Html.AntiForgeryToken()
+                                                <div>
+                                                    <label for="workflow-close-opening" class="form-label">ประโยคขึ้นต้น</label>
+                                                    <select id="workflow-close-opening" name="CloseOpening" required class="form-select-compact w-full">
+                                                        <option value="">— เลือกประโยคขึ้นต้น —</option>
+                                                        @foreach (var option in CaseDetailModel.CloseOpeningOptions)
+                                                        {
+                                                            <option value="@option.Key">@option.Value</option>
+                                                        }
+                                                    </select>
+                                                </div>
+                                                <div>
+                                                    <label for="workflow-close-resolution" class="form-label">รายละเอียดสรุปผล</label>
+                                                    <textarea id="workflow-close-resolution" name="CloseResolution" required minlength="20" maxlength="4000" rows="4" class="form-textarea-compact w-full"></textarea>
+                                                </div>
+                                                <label class="flex items-start gap-3 rounded-lg border border-gray-200 bg-white p-3">
+                                                    <input type="checkbox" name="ClosureChecklistConfirmed" value="true" required class="mt-0.5 h-5 w-5 text-srt-navy focus:ring-srt-navy" />
+                                                    <span class="text-sm text-gray-700">ตรวจข้อเท็จจริง ผลดำเนินการ หลักฐาน และข้อความสำหรับผู้ร้องแล้ว ไม่มีข้อมูลภายในหรือข้อมูลอ่อนไหวที่ไม่ควรเปิดเผย</span>
+                                                </label>
+                                                <button type="submit" class="btn-primary min-h-11">ยืนยันสรุปผลและไปขั้นแจ้งผล</button>
+                                            </form>
+                                        }
+                                        else if (step == 6)
+                                        {
+                                            <div class="rounded-lg border border-blue-200 bg-white p-3">
+                                                <p class="text-xs font-semibold text-srt-navy">ข้อความที่จะส่งให้ผู้ร้อง</p>
+                                                <p class="mt-2 whitespace-pre-wrap text-sm leading-6 text-gray-800">@c.ResolutionSummary</p>
+                                            </div>
+                                            <form method="post" asp-page-handler="ClosePrepared" asp-route-id="@c.Id" class="mt-3">
+                                                @Html.AntiForgeryToken()
+                                                <button type="submit" class="min-h-11 rounded-lg bg-green-700 px-4 py-2 text-sm font-semibold text-white hover:bg-green-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-600 focus-visible:ring-offset-2">
+                                                    แจ้งผลและปิดเรื่อง
+                                                </button>
+                                            </form>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    </li>
+                }
+            </ol>
+
+            @if (canModify && !isClosed && displayedWorkflowNumber > 2)
+            {
+                <div class="mt-4 flex flex-col gap-2 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
+                    <p class="text-xs leading-5 text-slate-500">ต้องแก้ข้อมูลจากขั้นก่อนหน้า? ข้อมูลที่บันทึกไว้จะไม่ถูกลบ</p>
+                    <form method="post" asp-page-handler="PreviousWorkflowStep" asp-route-id="@c.Id">
+                        @Html.AntiForgeryToken()
+                        <button type="submit"
+                                data-confirm="ย้อนกลับไปขั้นตอนก่อนหน้า? ข้อมูลเดิมจะยังคงอยู่"
+                                class="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-srt-navy hover:text-srt-navy focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-srt-navy focus-visible:ring-offset-2">
+                            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
+                            ย้อนกลับขั้นก่อนหน้า
+                        </button>
+                    </form>
+                </div>
+            }
+
+            @if (c.AcceptanceEvidence.FirstOrDefault() is { } evidence)
+            {
+                <details class="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4">
+                    <summary class="cursor-pointer text-sm font-semibold text-gray-800">หลักฐานการยอมรับเงื่อนไขของผู้ร้อง</summary>
+                    <dl class="mt-3 grid grid-cols-1 gap-2 text-xs text-gray-600 sm:grid-cols-2">
+                        <div><dt class="font-medium text-gray-800">เลขหลักฐาน</dt><dd class="font-mono break-all">@evidence.EvidenceId</dd></div>
+                        <div><dt class="font-medium text-gray-800">ยอมรับเมื่อ</dt><dd>@evidence.AcceptedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss")</dd></div>
+                        <div><dt class="font-medium text-gray-800">เวอร์ชัน</dt><dd class="break-all">@evidence.TermsVersion</dd></div>
+                        <div><dt class="font-medium text-gray-800">แหล่งที่มา</dt><dd>@evidence.Source</dd></div>
+                    </dl>
+                </details>
+            }
+        </section>
 
         <!-- ══ Two-column layout ══ -->
         <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
@@ -400,18 +752,29 @@
                         <div class="space-y-4">
                             @foreach (var note in c.Notes.OrderByDescending(n => n.CreatedAt))
                             {
+                                var isReporterReply = note.NoteType == "ReporterReply";
+                                var noteAuthorName = isReporterReply ? "ผู้ร้องเรียน" : note.Author?.FullName ?? "ระบบ";
+                                var noteTypeLabel = note.NoteType switch
+                                {
+                                    "PublicReply" => "ตอบกลับผู้ร้อง",
+                                    "InfoRequest" => "ขอข้อมูลเพิ่ม",
+                                    "ReporterReply" => "ข้อมูลจากผู้ร้อง",
+                                    "Workflow" => "Workflow",
+                                    "StatusChange" => "เปลี่ยนสถานะ",
+                                    _ => "บันทึกภายใน"
+                                };
                                 <div class="flex gap-3">
                                     <div
                                         class="w-8 h-8 rounded-full bg-srt-navy/10 flex items-center justify-center text-xs font-semibold text-srt-navy shrink-0 mt-0.5">
-                                        @(note.Author?.FullName?.Split(' ').FirstOrDefault()?.FirstOrDefault() ?? '?')
+                                        @(isReporterReply ? "ผ" : note.Author?.FullName?.Split(' ').FirstOrDefault()?.FirstOrDefault() ?? '?')
                                     </div>
                                     <div class="flex-1 min-w-0">
                                         <div class="flex items-center gap-2 mb-1">
-                                            <span class="text-sm font-medium text-gray-900">@(note.Author?.FullName ?? "ระบบ")</span>
+                                            <span class="text-sm font-medium text-gray-900">@noteAuthorName</span>
                                             <span
                                                 class="px-1.5 py-0.5 rounded text-[10px] font-medium
-                                                @(note.NoteType == "PublicReply" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600")">
-                                                @(note.NoteType == "PublicReply" ? "ตอบกลับผู้ร้อง" : "บันทึกภายใน")
+                                                @(isReporterReply ? "bg-teal-100 text-teal-800" : note.NoteType is "PublicReply" or "InfoRequest" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600")">
+                                                @noteTypeLabel
                                             </span>
                                             <span class="text-xs text-gray-400 ml-auto">@note.CreatedAt.ToLocalTime().ToString("dd/MM/yy HH:mm")</span>
                                         </div>
@@ -476,25 +839,10 @@
                     <!-- ── Right: Action Panel ── -->
                     <div class="space-y-4">
 
-                        <!-- Claim -->
-                        @if (c.AssignedToId == null && c.Status == "Pending")
-                        {
-                            <div class="bg-amber-50 border border-amber-200 rounded-xl p-4">
-                                <p class="text-sm text-amber-800 font-medium mb-3">ยังไม่มีผู้รับผิดชอบ</p>
-                                <form method="post" asp-page-handler="Claim" asp-route-id="@c.Id">
-                                    @Html.AntiForgeryToken()
-                                    <button type="submit" class="w-full bg-srt-navy text-white text-sm font-medium py-2 rounded-lg
-                                        hover:bg-srt-navy-dark transition">
-                                        รับเรื่องนี้
-                                    </button>
-                                </form>
-                            </div>
-                        }
-
                         <!-- Edit complaint classification -->
-                        @if (canModify)
+                        @if (canModify && c.WorkflowStep != ComplaintWorkflowSteps.Classification)
                         {
-                            <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+                            <div id="classification-panel" class="scroll-mt-24 bg-white rounded-xl border border-gray-200 shadow-sm p-4">
                                 <h3 class="text-sm font-semibold text-gray-900">แก้ไขประเภทและฝ่ายรับผิดชอบ</h3>
                                 <p class="mt-1 mb-3 text-xs text-gray-500">ใช้เมื่อผู้ร้องเลือกประเภทหรือฝ่ายไม่ถูกต้อง</p>
                                 <form method="post" asp-page-handler="UpdateClassification" asp-route-id="@c.Id">
@@ -565,7 +913,7 @@
                                             </select>
                                             <button type="submit"
                                                     class="w-full min-h-11 bg-blue-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg hover:bg-blue-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-60 transition"
-                                                    onclick="return confirm('ยืนยันสร้างเอกสารใน eDOC สำหรับ Basket ที่เลือก?')">
+                                                    data-confirm="ยืนยันสร้างเอกสารใน eDOC สำหรับ Basket ที่เลือก?">
                                                 สร้างเอกสาร eDOC
                                             </button>
                                         </form>
@@ -618,7 +966,7 @@
                                             {
                                                 <form method="post" asp-page-handler="RetryEdoc" asp-route-id="@c.Id">
                                                     @Html.AntiForgeryToken()
-                                                    <button type="submit" onclick="return confirm('ยืนยันส่งเอกสาร eDOC ใหม่? ควรตรวจสอบก่อนเพื่อป้องกันเอกสารซ้ำ')"
+                                                    <button type="submit" data-confirm="ยืนยันส่งเอกสาร eDOC ใหม่? ควรตรวจสอบสถานะก่อนเพื่อป้องกันเอกสารซ้ำ"
                                                             class="w-full min-h-11 border border-red-300 text-red-700 text-sm font-medium px-3 py-2 rounded-lg hover:bg-red-50 transition">ส่งใหม่ (ผู้ดูแลระบบ)</button>
                                                 </form>
                                             }
@@ -626,90 +974,13 @@
                                             {
                                                 <form method="post" asp-page-handler="RetryEdocAttachments" asp-route-id="@c.Id">
                                                     @Html.AntiForgeryToken()
-                                                    <button type="submit" onclick="return confirm('ยืนยันส่งไฟล์แนบที่มีปัญหาใหม่?')"
+                                                    <button type="submit" data-confirm="ยืนยันส่งไฟล์แนบที่มีปัญหาใหม่?"
                                                             class="w-full min-h-11 border border-amber-300 text-amber-800 text-sm font-medium px-3 py-2 rounded-lg hover:bg-amber-50 transition">ส่งไฟล์แนบใหม่ (ผู้ดูแลระบบ)</button>
                                                 </form>
                                             }
                                         </div>
                                     }
                                 }
-                            </div>
-                        }
-
-                        <!-- Complete and close in one step -->
-                        @if (canModify && c.Status is "InProgress" or "Resolved")
-                        {
-                            <div class="bg-white rounded-xl border-2 border-green-300 shadow-sm p-4">
-                                <div class="flex items-start gap-3 mb-4">
-                                    <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-green-100 text-green-700">
-                                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                                        </svg>
-                                    </span>
-                                    <div>
-                                        <h3 class="text-sm font-semibold text-gray-900">สรุปผลและปิดงาน</h3>
-                                        <p class="mt-1 text-xs leading-5 text-gray-600">กรอกครั้งเดียว ระบบจะส่งข้อความนี้ให้ผู้ร้องและเปลี่ยนสถานะเป็น “ปิดเรื่อง” ทันที</p>
-                                    </div>
-                                </div>
-
-                                <form id="close-case-form" method="post" asp-page-handler="Close" asp-route-id="@c.Id">
-                                    @Html.AntiForgeryToken()
-                                    <label for="close-opening" class="block text-xs font-medium text-gray-700 mb-1">
-                                        ประโยคขึ้นต้น <span class="text-red-600" aria-hidden="true">*</span>
-                                    </label>
-                                    <select id="close-opening" name="CloseOpening" required
-                                            aria-describedby="close-opening-help"
-                                            class="form-select-compact min-h-11 mb-1">
-                                        <option value="">— เลือกประโยคขึ้นต้น —</option>
-                                        @foreach (var option in CaseDetailModel.CloseOpeningOptions)
-                                        {
-                                            <option value="@option.Key">@option.Value</option>
-                                        }
-                                    </select>
-                                    <p id="close-opening-help" class="text-xs text-gray-500 mb-3">เลือกประโยคที่ตรงกับผลการดำเนินงานมากที่สุด</p>
-
-                                    <label for="close-resolution" class="block text-xs font-medium text-gray-700 mb-1">
-                                        รายละเอียดสรุปผล <span class="text-red-600" aria-hidden="true">*</span>
-                                    </label>
-                                    <textarea id="close-resolution" name="CloseResolution" rows="4" required maxlength="4000"
-                                              aria-describedby="close-resolution-help"
-                                              placeholder="เช่น ได้เปลี่ยนอุปกรณ์ที่ชำรุดและตรวจสอบความปลอดภัยเรียบร้อยแล้ว"
-                                              class="form-textarea-compact min-h-28 mb-1 border-green-200 focus:border-green-500 focus:ring-green-500"></textarea>
-                                    <p id="close-resolution-help" class="text-xs text-gray-500">ระบุสิ่งที่ตรวจสอบ แก้ไข หรือชี้แจง โดยไม่ต้องพิมพ์ประโยคขึ้นต้นซ้ำ</p>
-
-                                    <div id="close-summary-preview" class="hidden mt-3 rounded-lg border border-green-200 bg-green-50 p-3" aria-live="polite">
-                                        <p class="text-xs font-semibold text-green-800 mb-1">ข้อความที่ผู้ร้องจะเห็น</p>
-                                        <p id="close-summary-preview-text" class="text-sm leading-6 text-gray-800 whitespace-pre-wrap"></p>
-                                    </div>
-
-                                    <button id="close-case-submit" type="submit"
-                                            class="mt-4 w-full min-h-11 rounded-lg bg-green-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-green-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-60 transition">
-                                        บันทึกสรุปผลและปิดงาน
-                                    </button>
-                                </form>
-                            </div>
-                        }
-
-                        <!-- Other status actions -->
-                        @if (!isClosed && Model.AllowedNextStatuses.Length > 0)
-                        {
-                            <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-                                <h3 class="text-sm font-semibold text-gray-900 mb-3">การดำเนินการอื่น</h3>
-                                <form method="post" asp-page-handler="UpdateStatus" asp-route-id="@c.Id">
-                                    @Html.AntiForgeryToken()
-                                    <label for="new-status" class="sr-only">เลือกสถานะใหม่</label>
-                                    <select id="new-status" name="NewStatus" required class="form-select-compact min-h-11 mb-3">
-                                        <option value="">— เลือกสถานะใหม่ —</option>
-                                        @foreach (var status in Model.AllowedNextStatuses)
-                                        {
-                                            <option value="@status">@CaseDetailModel.StatusLabel(status)</option>
-                                        }
-                                    </select>
-                                    <button type="submit" class="w-full border border-srt-navy text-srt-navy text-sm font-medium py-2 rounded-lg
-                                        hover:bg-srt-navy hover:text-white transition">
-                                        บันทึกสถานะ
-                                    </button>
-                                </form>
                             </div>
                         }
 
@@ -736,10 +1007,7 @@
                                     </label>
                                     <input type="file" name="NoteAttachments" multiple
                                            accept=".jpg,.jpeg,.png,.pdf,.doc,.docx"
-                                           class="block w-full text-xs text-gray-500 mb-3
-                                                  file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0
-                                                  file:text-xs file:font-medium file:bg-gray-100 file:text-gray-700
-                                                  hover:file:bg-gray-200" />
+                                           class="file-input mb-3" />
                                     <button type="submit" class="w-full border border-gray-300 text-gray-700 text-sm font-medium py-2 rounded-lg
                                         hover:bg-gray-50 transition">
                                         บันทึก
@@ -789,7 +1057,7 @@
                                 {
                                     <form method="post" asp-page-handler="Reopen" asp-route-id="@c.Id" class="mt-3">
                                         @Html.AntiForgeryToken()
-                                        <button type="submit" onclick="return confirm('เปิดเรื่องนี้ใหม่อีกครั้ง?')" class="inline-flex items-center gap-1.5 text-xs text-amber-700 border border-amber-300
+                                        <button type="submit" data-confirm="เปิดเรื่องนี้ใหม่อีกครั้ง?" class="inline-flex items-center gap-1.5 text-xs text-amber-700 border border-amber-300
                                             bg-amber-50 px-3 py-1.5 rounded-lg hover:bg-amber-100 transition">
                                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -864,14 +1132,7 @@
 
             opening.addEventListener('change', updatePreview);
             resolution.addEventListener('input', updatePreview);
-            form.addEventListener('submit', function (event) {
-                if (!window.confirm('ยืนยันบันทึกสรุปผลและปิดงานนี้? ผู้ร้องจะเห็นข้อความที่แสดงในตัวอย่าง')) {
-                    event.preventDefault();
-                    return;
-                }
-                submit.disabled = true;
-                submit.textContent = 'กำลังบันทึกและปิดงาน...';
-            });
+            form.dataset.confirm = 'ยืนยันบันทึกสรุปผลและปิดงานนี้? ผู้ร้องจะเห็นข้อความที่แสดงในตัวอย่าง';
         })();
     </script>
 }

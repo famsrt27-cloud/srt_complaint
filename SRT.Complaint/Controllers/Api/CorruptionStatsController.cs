@@ -42,7 +42,15 @@ public class CorruptionStatsController(
         catch (Exception ex)
         {
             logger.LogError(ex, "Error getting corruption stats");
-            return StatusCode(500, new { error = "Internal server error" });
+            return StatusCode(500, new
+            {
+                error = new
+                {
+                    code = "internal_error",
+                    message = "Internal server error",
+                    traceId = HttpContext.TraceIdentifier
+                }
+            });
         }
     }
 }

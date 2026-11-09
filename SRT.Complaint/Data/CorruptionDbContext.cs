@@ -9,6 +9,7 @@ public class CorruptionDbContext(DbContextOptions<CorruptionDbContext> options) 
     public DbSet<CorruptionReport> Reports => Set<CorruptionReport>();
     public DbSet<InvestigationLog> InvestigationLogs => Set<InvestigationLog>();
     public DbSet<DecryptionLog> DecryptionLogs => Set<DecryptionLog>();
+    public DbSet<CorruptionAttachment> Attachments => Set<CorruptionAttachment>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -44,6 +45,16 @@ public class CorruptionDbContext(DbContextOptions<CorruptionDbContext> options) 
             e.Property(x => x.IpAddress).HasMaxLength(50);
             e.HasOne(x => x.Report).WithMany(r => r.DecryptionLogs).HasForeignKey(x => x.ReportId).OnDelete(DeleteBehavior.Restrict);
             e.Ignore(x => x.RequestedBy);
+        });
+
+        modelBuilder.Entity<CorruptionAttachment>(e =>
+        {
+            e.ToTable("Attachments", "corruption");
+            e.Property(x => x.FileName).HasMaxLength(500);
+            e.Property(x => x.StoredPath).HasMaxLength(1000);
+            e.Property(x => x.MimeType).HasMaxLength(100);
+            e.HasOne(x => x.Report).WithMany(x => x.Attachments)
+                .HasForeignKey(x => x.ReportId).OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

@@ -4,15 +4,20 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using SRT.Complaint.Services;
+using SRT.Complaint.Data;
+using Microsoft.EntityFrameworkCore;
 
 namespace SRT.Complaint.Pages.Corruption;
 
 [Authorize(Policy = "CorruptionAccess")]
 public class QueueModel(
     ICorruptionService corruptionService,
-    IStaffDirectoryService staffDirectory) : PageModel
+    IStaffDirectoryService staffDirectory,
+    AppDbContext appDb) : PageModel
 {
     [BindProperty(SupportsGet = true)] public string? Status { get; set; }
+    [BindProperty(SupportsGet = true)] public string? Search { get; set; }
+    [BindProperty(SupportsGet = true)] public string? QuickView { get; set; }
     [BindProperty(SupportsGet = true)] public int CurrentPage { get; set; } = 1;
 
     public const int PageSize = 20;
@@ -28,6 +33,9 @@ public class QueueModel(
 
         var filter = new CorruptionQueueFilter(
             Status: Status,
+            Search: Search,
+            QuickView: QuickView,
+            ViewerStaffId: int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!),
             Page: CurrentPage,
             PageSize: PageSize);
 
@@ -43,6 +51,10 @@ public class QueueModel(
         var staffNames = await staffDirectory.GetNamesByIdsAsync(assignedIds);
 
         var now = DateTime.UtcNow;
+        var normalSla = await appDb.SlaConfigs.AsNoTracking().FirstOrDefaultAsync(x => x.Priority == "Normal");
+        var warningWindowHours = normalSla is null
+            ? 24
+            : Math.Max(1, normalSla.ResolutionHours * (100 - normalSla.WarningThresholdPercent) / 100d);
         Reports = reports.Select(r => new CorruptionQueueRowVm(
             r.Id,
             r.ReferenceNumber,
@@ -59,7 +71,7 @@ public class QueueModel(
             r.AssignedToId,
             r.AssignedToId.HasValue ? staffNames.GetValueOrDefault(r.AssignedToId.Value) : null,
             r.SlaBreached,
-            !r.SlaBreached && r.SlaDeadline.HasValue && r.SlaDeadline <= now.AddHours(24),
+            !r.SlaBreached && r.SlaDeadline.HasValue && r.SlaDeadline <= now.AddHours(warningWindowHours),
             SlaText(r.SlaDeadline, now)
         )).ToList();
     }
@@ -76,7 +88,7 @@ public class QueueModel(
         {
             TempData["Error"] = ex.Message;
         }
-        return RedirectToPage(new { Status, CurrentPage });
+        return RedirectToPage(new { Status, Search, QuickView, CurrentPage });
     }
 
     private static string PriorityLabel(string p) => p switch

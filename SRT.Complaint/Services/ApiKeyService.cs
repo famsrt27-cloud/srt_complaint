@@ -130,6 +130,8 @@ public class ApiKeyService(AppDbContext db, IAuditService auditService, IConfigu
             throw new InvalidOperationException(error);
         if (request.DataAccessMode == "All" && request.KeyType != "Internal")
             throw new InvalidOperationException("สิทธิ์เข้าถึงข้อมูลทั้งหมดอนุญาตเฉพาะ Internal key");
+        if (request.KeyType != "Internal" && request.Scopes.Contains("complaints:update", StringComparer.Ordinal))
+            throw new InvalidOperationException("complaints:update อนุญาตเฉพาะ Internal key เพื่อป้องกันการข้ามขั้นตอนดำเนินงาน");
         if (request.KeyType != "Internal" && request.Scopes.Contains("corruption:stats", StringComparer.Ordinal))
             throw new InvalidOperationException("corruption:stats อนุญาตเฉพาะ Internal key");
     }

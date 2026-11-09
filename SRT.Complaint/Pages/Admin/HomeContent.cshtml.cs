@@ -84,7 +84,8 @@ public class HomeContentModel(IContentBlockService contentService, IWebHostEnvir
 
         if (!ModelState.IsValid)
         {
-            await OnGetAsync();
+            ViewData["Title"] = "จัดการเนื้อหาหน้าแรก";
+            await LoadUpdatedAtAsync();
             return Page();
         }
 
@@ -148,6 +149,14 @@ public class HomeContentModel(IContentBlockService contentService, IWebHostEnvir
     }
 
     private static string? NullIfEmpty(string? value) => string.IsNullOrWhiteSpace(value) ? null : value;
+
+    private async Task LoadUpdatedAtAsync()
+    {
+        var blocks = await contentService.GetHomeBlocksAsync();
+        StepsUpdatedAt = blocks.GetValueOrDefault("home_steps")?.UpdatedAt ?? default;
+        ContactUpdatedAt = blocks.GetValueOrDefault("home_contact")?.UpdatedAt ?? default;
+        TrustUpdatedAt = blocks.GetValueOrDefault("home_trust")?.UpdatedAt ?? default;
+    }
 
     public class StepsInputModel
     {

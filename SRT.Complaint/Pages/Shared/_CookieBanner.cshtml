@@ -1,45 +1,41 @@
-<div id="cookie-banner"
-     class="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-200 shadow-lg"
-     role="region"
-     aria-label="นโยบายคุกกี้">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3
-                flex flex-col sm:flex-row items-start sm:items-center gap-3">
-        <div class="flex items-start gap-3 flex-1 min-w-0">
-            <svg class="w-5 h-5 text-srt-navy shrink-0 mt-0.5" fill="none" stroke="currentColor"
-                 viewBox="0 0 24 24" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                      d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <p class="text-xs text-gray-600 leading-relaxed">
-                เว็บไซต์นี้ใช้ <strong class="text-gray-800">คุกกี้ที่จำเป็น (Essential Cookies)</strong>
-                เพื่อให้ระบบยื่นเรื่องร้องเรียน ระบบป้องกัน CSRF และการเข้าสู่ระบบทำงานได้อย่างปลอดภัย
-                ไม่มีการเก็บคุกกี้เพื่อวิเคราะห์หรือโฆษณาใดๆ
-                ตาม <abbr title="พระราชบัญญัติคุ้มครองข้อมูลส่วนบุคคล พ.ศ. 2562" class="underline decoration-dotted cursor-help">พ.ร.บ. คุ้มครองข้อมูลส่วนบุคคล พ.ศ. 2562</abbr>
-            </p>
+@using SRT.Complaint.Pages
+@{
+    var noticeAccepted = Context.Request.Cookies.TryGetValue(PrivacyModel.CookieNoticeName, out var noticeVersion)
+        && string.Equals(noticeVersion, PrivacyModel.CookieNoticeVersion, StringComparison.Ordinal);
+    var returnUrl = $"{Context.Request.PathBase}{Context.Request.Path}{Context.Request.QueryString}";
+}
+
+@if (!noticeAccepted)
+{
+    <div id="cookie-banner"
+         class="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-200 shadow-lg"
+         role="region"
+         aria-label="ประกาศการใช้คุกกี้">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4
+                    flex flex-col sm:flex-row items-start sm:items-center gap-4">
+            <div class="flex items-start gap-3 flex-1 min-w-0">
+                <svg class="w-5 h-5 text-srt-navy shrink-0 mt-0.5" fill="none" stroke="currentColor"
+                     viewBox="0 0 24 24" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div>
+                    <p class="text-sm font-semibold text-gray-900">เว็บไซต์นี้ใช้คุกกี้ที่จำเป็น</p>
+                    <p class="mt-1 text-xs text-gray-600 leading-relaxed">
+                        ใช้สำหรับความปลอดภัย การยื่นเรื่อง และการเข้าสู่ระบบเท่านั้น ปัจจุบันไม่มีคุกกี้โฆษณาหรือวิเคราะห์พฤติกรรม
+                        <a asp-page="/Privacy" class="font-semibold text-srt-navy underline hover:no-underline">ดูรายละเอียดและการตั้งค่า</a>
+                    </p>
+                </div>
+            </div>
+            <form method="post" asp-page="/Privacy" asp-page-handler="AcknowledgeCookieNotice" class="shrink-0">
+                <input type="hidden" name="returnUrl" value="@returnUrl" />
+                <button type="submit"
+                        class="min-h-11 px-5 py-2 bg-srt-navy text-white text-sm font-semibold rounded-xl
+                               hover:bg-blue-900 focus-visible:outline-none focus-visible:ring-2
+                               focus-visible:ring-srt-navy focus-visible:ring-offset-2 transition whitespace-nowrap">
+                    รับทราบ
+                </button>
+            </form>
         </div>
-        <button type="button"
-                onclick="srtAcceptCookies()"
-                class="shrink-0 px-5 py-2 bg-srt-navy text-white text-xs font-semibold rounded-xl
-                       hover:bg-blue-900 transition whitespace-nowrap">
-            รับทราบ
-        </button>
     </div>
-</div>
-
-<script>
-    (function () {
-        if (localStorage.getItem('srt_pdpa_consent') === '1') {
-            var b = document.getElementById('cookie-banner');
-            if (b) b.style.display = 'none';
-        }
-    })();
-
-    function srtAcceptCookies() {
-        localStorage.setItem('srt_pdpa_consent', '1');
-        var el = document.getElementById('cookie-banner');
-        el.style.transition = 'transform 0.25s ease, opacity 0.25s ease';
-        el.style.opacity = '0';
-        el.style.transform = 'translateY(20px)';
-        setTimeout(function () { el.style.display = 'none'; }, 260);
-    }
-</script>
+}

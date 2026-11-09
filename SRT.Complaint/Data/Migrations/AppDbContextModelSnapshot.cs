@@ -22,6 +22,25 @@ namespace SRT.Complaint.Data.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("Microsoft.AspNetCore.DataProtection.EntityFrameworkCore.DataProtectionKey", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("FriendlyName")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Xml")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("DataProtectionKeys");
+                });
+
             modelBuilder.Entity("SRT.Complaint.Models.ApiIdempotencyRecord", b =>
                 {
                     b.Property<long>("Id")
@@ -365,9 +384,19 @@ namespace SRT.Complaint.Data.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
+                    b.Property<string>("ResolutionSummary")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
                     b.Property<string>("ResponsibleDepartment")
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
 
                     b.Property<string>("SatisfactionNote")
                         .HasMaxLength(500)
@@ -380,6 +409,9 @@ namespace SRT.Complaint.Data.Migrations
                         .HasColumnType("bit");
 
                     b.Property<DateTime?>("SlaDeadline")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("SlaWarningSentAt")
                         .HasColumnType("datetime2");
 
                     b.Property<int?>("SourcePartnerId")
@@ -404,6 +436,18 @@ namespace SRT.Complaint.Data.Migrations
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("WorkflowStep")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)")
+                        .HasDefaultValue("Received");
+
+                    b.Property<DateTime>("WorkflowUpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
                     b.HasKey("Id");
 
                     b.HasIndex("AssignedToId");
@@ -422,6 +466,63 @@ namespace SRT.Complaint.Data.Migrations
                         .HasFilter("[ExternalId] IS NOT NULL");
 
                     b.ToTable("Complaints", "dbo");
+                });
+
+            modelBuilder.Entity("SRT.Complaint.Models.ComplaintAcceptanceEvidence", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("AcceptanceType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime>("AcceptedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("ComplaintId")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("EvidenceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("TermsContentHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("TermsContentSnapshot")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("TermsTitle")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("TermsVersion")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EvidenceId")
+                        .IsUnique();
+
+                    b.HasIndex("ComplaintId", "AcceptanceType")
+                        .IsUnique();
+
+                    b.ToTable("ComplaintAcceptanceEvidence", "dbo");
                 });
 
             modelBuilder.Entity("SRT.Complaint.Models.ComplaintAttachment", b =>
@@ -580,6 +681,47 @@ namespace SRT.Complaint.Data.Migrations
                             Name = "อื่น ๆ",
                             SortOrder = 9
                         });
+                });
+
+            modelBuilder.Entity("SRT.Complaint.Models.ComplaintDepartment", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("ComplaintDepartments", "dbo");
                 });
 
             modelBuilder.Entity("SRT.Complaint.Models.ComplaintNote", b =>
@@ -1278,6 +1420,48 @@ namespace SRT.Complaint.Data.Migrations
                     b.ToTable("ExternalSyncLogs", "dbo");
                 });
 
+            modelBuilder.Entity("SRT.Complaint.Models.NotificationDeliveryLog", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("AttemptedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Channel")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("EventKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("RecipientMasked")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AttemptedAt");
+
+                    b.ToTable("NotificationDeliveryLogs", "dbo");
+                });
+
             modelBuilder.Entity("SRT.Complaint.Models.NotificationTemplate", b =>
                 {
                     b.Property<int>("Id")
@@ -1596,6 +1780,9 @@ namespace SRT.Complaint.Data.Migrations
                         .HasColumnType("int");
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("AuthVersion")
+                        .HasColumnType("int");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
@@ -1949,6 +2136,17 @@ namespace SRT.Complaint.Data.Migrations
                     b.Navigation("SubCategory");
                 });
 
+            modelBuilder.Entity("SRT.Complaint.Models.ComplaintAcceptanceEvidence", b =>
+                {
+                    b.HasOne("SRT.Complaint.Models.Complaint", "Complaint")
+                        .WithMany("AcceptanceEvidence")
+                        .HasForeignKey("ComplaintId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Complaint");
+                });
+
             modelBuilder.Entity("SRT.Complaint.Models.ComplaintAttachment", b =>
                 {
                     b.HasOne("SRT.Complaint.Models.Complaint", "Complaint")
@@ -2166,6 +2364,8 @@ namespace SRT.Complaint.Data.Migrations
 
             modelBuilder.Entity("SRT.Complaint.Models.Complaint", b =>
                 {
+                    b.Navigation("AcceptanceEvidence");
+
                     b.Navigation("Attachments");
 
                     b.Navigation("Notes");

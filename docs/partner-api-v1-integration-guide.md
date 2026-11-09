@@ -130,7 +130,7 @@ curl --request GET \
 | `complaints:write` | สร้างเรื่องร้องเรียน | ต้องใช้ `Idempotency-Key` |
 | `complaints:status` | อ่านสถานะอย่างย่อ | จำกัดตาม Partner |
 | `complaints:read` | อ่านรายการและรายละเอียด | มีข้อมูลส่วนบุคคล |
-| `complaints:update` | เปลี่ยนสถานะและเพิ่มข้อความตอบกลับ | ให้เฉพาะระบบที่ได้รับอนุญาต |
+| `complaints:update` | เปลี่ยนสถานะและเพิ่มข้อความตอบกลับ | Internal key เท่านั้น; ไม่ออกให้ Partner ภายนอก |
 | `complaints:edoc` | อ่าน payload สำหรับ eDOC | มีข้อมูลส่วนบุคคล |
 | `stats:summary` | อ่านสถิติสรุป | สรุปตามขอบเขตคีย์ |
 | `stats:detailed` | อ่านสถิติแยกประเภท | สรุปตามขอบเขตคีย์ |
@@ -143,7 +143,7 @@ curl --request GET \
 |---|---|
 | ส่งเรื่องอย่างเดียว | `metadata:read`, `complaints:write` |
 | ส่งและติดตาม | เพิ่ม `complaints:status` |
-| เชื่อมต่อสองทาง | เพิ่ม `complaints:read`, `complaints:update`, `webhooks:manage` |
+| เชื่อมต่อสองทาง | เพิ่ม `complaints:read`, `webhooks:manage`; รับผลเปลี่ยนสถานะผ่าน Webhook |
 | ระบบรายงาน | `metadata:read`, `stats:summary`, `stats:detailed` |
 
 ## 6. ข้อกำหนด Request และ Response
@@ -184,6 +184,8 @@ Response จะมี Header:
 
 ```http
 X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 42
+X-RateLimit-Reset: 1793673060
 ```
 
 เมื่อเกินกำหนด:
@@ -372,6 +374,9 @@ Scope: complaints:read
       "referenceNumber": "SRT-COMPL-2569-0123",
       "externalReference": "EDOC-2026-00001234",
       "status": "InProgress",
+      "workflowStep": "Investigation",
+      "workflowStepTh": "กำลังดำเนินการ",
+      "workflowUpdatedAt": "2026-11-03T04:20:00Z",
       "priority": "Normal",
       "category": "ความตรงต่อเวลา",
       "subjectStation": "สถานีกรุงเทพอภิวัฒน์",
@@ -404,6 +409,8 @@ GET /api/v1/complaints/{referenceNumber}/status
 Scope: complaints:status
 ```
 
+Response header มี `ETag` และ body มี `version` สำหรับระบุ revision ปัจจุบัน
+
 ```json
 {
   "referenceNumber": "SRT-COMPL-2569-0123",
@@ -412,15 +419,17 @@ Scope: complaints:status
   "statusTh": "กำลังดำเนินการ",
   "updatedAt": "2026-10-27T03:00:00Z",
   "closedAt": null,
-  "slaBreached": false
+  "slaBreached": false,
+  "version": "AAAAAAAAB9E="
 }
 ```
 
-### 9.6 อัปเดตสถานะ
+### 9.6 อัปเดตสถานะ (Internal integration เท่านั้น)
 
 ```http
 PUT /api/v1/complaints/{referenceNumber}/status
 Scope: complaints:update
+If-Match: "AAAAAAAAB9E="
 ```
 
 ```json
@@ -430,7 +439,7 @@ Scope: complaints:update
 }
 ```
 
-`note` ยาวไม่เกิน 2,000 ตัวอักษร ระบบตรวจ allowlist ของสถานะและ ownership ทุกครั้ง
+Partner ภายนอกเรียก Endpoint นี้ไม่ได้และจะได้รับ `403 external_status_update_disabled` ให้ใช้ status read หรือ Webhook เพื่อติดตามผล การเชื่อมต่อภายในต้องส่ง `If-Match` จาก `ETag` ล่าสุด ระบบตรวจ transition ตาม workflow; หาก version ล้าสมัยตอบ `412`, ไม่ส่ง header ตอบ `428`, และ transition ไม่ถูกต้องตอบ `409 invalid_status_transition`
 
 ### 9.7 eDOC payload
 
@@ -466,6 +475,8 @@ Endpoint `/api/v1/stats/corruption` ต้องใช้ `corruption:stats` แ
 POST /api/v1/webhooks
 Scope: webhooks:manage
 ```
+
+API key หนึ่งตัวลงทะเบียนได้สูงสุด 10 active webhooks ระบบ normalize event เป็น lowercase และตัดค่าซ้ำก่อนบันทึก
 
 ```json
 {
@@ -689,8 +700,11 @@ pm.request.headers.upsert({ key: "Idempotency-Key", value: pm.variables.replaceI
 | 403 | Scope, data access หรือ IP ไม่ผ่าน | หยุด retry และตรวจ config |
 | 404 | ไม่พบหรือไม่มี ownership | ตรวจ reference และ Partner |
 | 409 | ข้อมูลซ้ำหรือ idempotency conflict | ตรวจ `externalReference`/key |
+| 412 | `If-Match` ล้าสมัย | อ่านข้อมูลล่าสุดและพิจารณาคำสั่งใหม่ |
 | 422 | ค่า business validation ผิด | แก้ข้อมูลก่อนส่งใหม่ |
+| 428 | ไม่ส่ง `If-Match` | อ่าน resource เพื่อรับ `ETag` ก่อน |
 | 429 | เกิน Rate limit | รอตาม `Retry-After` พร้อม jitter |
+| 503 | distributed limiter ไม่พร้อม | รอตาม `Retry-After`; ห้าม bypass quota |
 | 500 | ระบบขัดข้อง | retry แบบ exponential backoff ด้วย Idempotency-Key เดิม |
 
 ## 14. การเก็บ Secret และ Rotation

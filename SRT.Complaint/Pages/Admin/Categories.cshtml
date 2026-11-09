@@ -4,6 +4,15 @@
     ViewData["Title"] = "หมวดหมู่เรื่องร้องเรียน";
 }
 
+<div class="page-header">
+    <div>
+        <p class="admin-page-eyebrow">โครงสร้างการรับเรื่อง</p>
+        <h1 class="page-title">หมวดหมู่เรื่องร้องเรียน</h1>
+        <p class="page-subtitle">จัดลำดับหมวดหมู่และหมวดหมู่ย่อยที่ประชาชนใช้ในการยื่นเรื่อง</p>
+    </div>
+    <a asp-page="/Admin/Departments" class="btn-secondary">จัดการฝ่ายที่เกี่ยวข้อง</a>
+</div>
+
 <!-- ══ Edit Category Form ══ -->
 @if (Model.EditTarget != null)
 {
@@ -18,9 +27,17 @@
                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-srt-navy" />
             </div>
             <div>
-                <label class="block text-xs font-medium text-gray-600 mb-1">แผนกรับผิดชอบ</label>
-                <input name="EditDepartmentName" value="@Model.EditTarget.DepartmentName"
-                       class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-srt-navy" />
+                <label for="edit-category-department" class="block text-xs font-medium text-gray-600 mb-1">ฝ่ายรับผิดชอบ</label>
+                <select id="edit-category-department" name="EditDepartmentName"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-srt-navy">
+                    <option value="">— ยังไม่ระบุ —</option>
+                    @foreach (var department in Model.DepartmentOptions)
+                    {
+                        <option value="@department.Name" selected="@(department.Name == Model.EditTarget.DepartmentName)">
+                            @department.Name@(!department.IsActive ? " (ปิดใช้งาน)" : "")
+                        </option>
+                    }
+                </select>
             </div>
             <div>
                 <label class="block text-xs font-medium text-gray-600 mb-1">Priority เริ่มต้น</label>
@@ -124,7 +141,7 @@
                     <form method="post" asp-page-handler="ToggleActive" asp-route-id="@c.Id" class="inline">
                         @Html.AntiForgeryToken()
                         <button type="submit"
-                                onclick="return confirm('@(c.IsActive ? "ปิดใช้งาน" : "เปิดใช้งาน") \"@c.Name\" ?')"
+                                data-confirm="@(c.IsActive ? "ยืนยันปิดใช้งานหมวดหมู่นี้?" : "ยืนยันเปิดใช้งานหมวดหมู่นี้?")"
                                 class="text-xs @(c.IsActive ? "text-red-600 hover:text-red-800" : "text-green-600 hover:text-green-800") font-medium">
                             @(c.IsActive ? "ปิดใช้" : "เปิดใช้")
                         </button>
@@ -136,7 +153,8 @@
             <div id="subs-@c.Id" class="hidden border-t border-gray-100 bg-gray-50/60">
                 @if (subs.Count > 0)
                 {
-                    <table class="w-full text-sm">
+                    <div class="overflow-x-auto">
+                    <table class="w-full min-w-[680px] text-sm">
                         <tbody>
                         @foreach (var s in subs)
                         {
@@ -165,7 +183,7 @@
                                         <form method="post" asp-page-handler="ToggleSubActive" asp-route-id="@s.Id" class="inline">
                                             @Html.AntiForgeryToken()
                                             <button type="submit"
-                                                    onclick="return confirm('@(s.IsActive ? "ปิดใช้งาน" : "เปิดใช้งาน") \"@s.Name\" ?')"
+                                                    data-confirm="@(s.IsActive ? "ยืนยันปิดใช้งานหัวข้อย่อยนี้?" : "ยืนยันเปิดใช้งานหัวข้อย่อยนี้?")"
                                                     class="text-xs @(s.IsActive ? "text-red-600 hover:text-red-800" : "text-green-600 hover:text-green-800") font-medium">
                                                 @(s.IsActive ? "ปิดใช้" : "เปิดใช้")
                                             </button>
@@ -173,7 +191,10 @@
                                         <form method="post" asp-page-handler="DeleteSub" asp-route-id="@s.Id" class="inline">
                                             @Html.AntiForgeryToken()
                                             <button type="submit"
-                                                    onclick="return confirm('ลบหัวข้อย่อย \"@s.Name\" ?')"
+                                                    data-confirm="ยืนยันลบหัวข้อย่อยนี้? การลบไม่สามารถย้อนกลับได้"
+                                                    data-confirm-title="ลบหัวข้อย่อย"
+                                                    data-confirm-text="ลบ"
+                                                    data-confirm-danger="true"
                                                     class="text-xs text-gray-400 hover:text-red-600 font-medium">ลบ</button>
                                         </form>
                                     </div>
@@ -182,6 +203,7 @@
                         }
                         </tbody>
                     </table>
+                    </div>
                 }
                 else
                 {
@@ -203,9 +225,15 @@
                    class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-srt-navy" />
         </div>
         <div>
-            <label class="block text-xs font-medium text-gray-600 mb-1">แผนกรับผิดชอบ</label>
-            <input name="NewDepartmentName" placeholder="เช่น ฝ่ายการเดินรถ"
-                   class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-srt-navy" />
+            <label for="new-category-department" class="block text-xs font-medium text-gray-600 mb-1">ฝ่ายรับผิดชอบ</label>
+            <select id="new-category-department" name="NewDepartmentName"
+                    class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-srt-navy">
+                <option value="">— ยังไม่ระบุ —</option>
+                @foreach (var department in Model.DepartmentOptions.Where(x => x.IsActive))
+                {
+                    <option value="@department.Name">@department.Name</option>
+                }
+            </select>
         </div>
         <div>
             <label class="block text-xs font-medium text-gray-600 mb-1">Priority เริ่มต้น</label>

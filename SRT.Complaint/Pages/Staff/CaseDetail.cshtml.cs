@@ -16,14 +16,15 @@ using SRT.Complaint.Validation;
 
 namespace SRT.Complaint.Pages.Staff;
 
-[Authorize(Policy = "StaffOnly")]
+[Authorize(Policy = "GeneralComplaintAccess")]
 public class CaseDetailModel(
     IComplaintService complaintService,
     IPdfExportService pdfExportService,
     IPdfSignerSettingsService pdfSignerSettings,
     IEdocIntegrationService edocIntegrationService,
     AppDbContext db,
-    IConfiguration config) : PageModel
+    IConfiguration config,
+    IAuditService auditService) : PageModel
 {
     private static readonly string[] AllowedNoteAttachmentExtensions = [".jpg", ".jpeg", ".png", ".pdf", ".doc", ".docx"];
     public static readonly IReadOnlyDictionary<string, string> CloseOpeningOptions =
@@ -39,7 +40,6 @@ public class CaseDetailModel(
     [BindProperty] public string? NoteContent { get; set; }
     [BindProperty] public string? NoteType { get; set; } = "InternalNote";
     [BindProperty] public List<IFormFile>? NoteAttachments { get; set; }
-    [BindProperty] public string? NewStatus { get; set; }
     [BindProperty] public int? TransferToId { get; set; }
     [BindProperty] public string? TransferReason { get; set; }
     [BindProperty] public string? CloseOpening { get; set; }
@@ -50,10 +50,15 @@ public class CaseDetailModel(
     [BindProperty] public int ClassificationCategoryId { get; set; }
     [BindProperty] public int? ClassificationSubCategoryId { get; set; }
     [BindProperty] public string? ClassificationDepartment { get; set; }
+    [BindProperty] public string? WorkflowReason { get; set; }
+    [BindProperty] public string? InvestigationSummary { get; set; }
+    [BindProperty] public string? InvestigationNote { get; set; }
+    [BindProperty] public List<IFormFile>? InvestigationAttachments { get; set; }
+    [BindProperty] public string? NoEvidenceReason { get; set; }
+    [BindProperty] public bool ClosureChecklistConfirmed { get; set; }
 
     public Models.Complaint Complaint { get; private set; } = null!;
     public IEnumerable<SelectListItem> StaffOptions { get; private set; } = [];
-    public string[] AllowedNextStatuses { get; private set; } = [];
     public EdocDocumentLink? EdocLink { get; private set; }
     public IReadOnlyList<EdocBasketOption> EdocBaskets { get; private set; } = [];
     public IReadOnlyList<string> PdfDepartmentOptions { get; private set; } = [];
@@ -63,6 +68,7 @@ public class CaseDetailModel(
     public string ClassificationDepartmentsByCategoryJson { get; private set; } = "{}";
     public string? DefaultEdocBasketId { get; private set; }
     public bool EdocEnabled => edocIntegrationService.IsEnabled;
+    public int CurrentWorkflowNumber => ComplaintWorkflowSteps.Number(Complaint.WorkflowStep);
 
     public async Task<IActionResult> OnGetAsync(int id)
     {
@@ -104,6 +110,199 @@ public class CaseDetailModel(
         return RedirectToPage(new { id });
     }
 
+    public async Task<IActionResult> OnPostCompleteScreeningAsync(int id)
+    {
+        if (!await CanModifyAsync(id)) return Forbid();
+        try
+        {
+            await complaintService.CompleteScreeningAsync(id, true, null, GetStaffId());
+            TempData["Success"] = "ยืนยันข้อมูลครบถ้วนแล้ว ไปยังขั้นจำแนกเรื่อง";
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["Error"] = ex.Message;
+        }
+        return RedirectToPage(new { id });
+    }
+
+    public async Task<IActionResult> OnPostRequestMoreInfoAsync(int id)
+    {
+        if (!await CanModifyAsync(id)) return Forbid();
+        try
+        {
+            await complaintService.CompleteScreeningAsync(id, false, WorkflowReason, GetStaffId());
+            TempData["Success"] = "บันทึกการขอข้อมูลเพิ่มเติมแล้ว";
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["Error"] = ex.Message;
+        }
+        return RedirectToPage(new { id });
+    }
+
+    public async Task<IActionResult> OnPostResumeScreeningAsync(int id)
+    {
+        if (!await CanModifyAsync(id)) return Forbid();
+        try
+        {
+            await complaintService.ResumeScreeningAsync(id, GetStaffId());
+            TempData["Success"] = "บันทึกว่าได้รับข้อมูลเพิ่มเติมแล้ว";
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["Error"] = ex.Message;
+        }
+        return RedirectToPage(new { id });
+    }
+
+    public async Task<IActionResult> OnPostCompleteClassificationAsync(int id)
+    {
+        if (!await CanModifyAsync(id)) return Forbid();
+        try
+        {
+            await complaintService.CompleteClassificationAsync(id, GetStaffId());
+            TempData["Success"] = "จำแนกเรื่องครบถ้วนแล้ว เริ่มดำเนินการได้";
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["Error"] = ex.Message;
+        }
+        return RedirectToPage(new { id });
+    }
+
+    public async Task<IActionResult> OnPostSaveAndCompleteClassificationAsync(int id)
+    {
+        if (!await CanModifyAsync(id)) return Forbid();
+        if (ClassificationCategoryId <= 0)
+        {
+            TempData["Error"] = "กรุณาเลือกประเภทเรื่อง";
+            return RedirectToPage(new { id });
+        }
+
+        try
+        {
+            await complaintService.UpdateClassificationAsync(
+                id,
+                ClassificationCategoryId,
+                ClassificationSubCategoryId > 0 ? ClassificationSubCategoryId : null,
+                ClassificationDepartment,
+                GetStaffId());
+            await complaintService.CompleteClassificationAsync(id, GetStaffId());
+            TempData["Success"] = "บันทึกการจำแนกและเริ่มขั้นดำเนินการแล้ว";
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["Error"] = ex.Message;
+        }
+
+        return RedirectToPage(new { id });
+    }
+
+    public async Task<IActionResult> OnPostCompleteInvestigationAsync(int id)
+    {
+        if (!await CanModifyAsync(id)) return Forbid();
+        if (string.IsNullOrWhiteSpace(InvestigationSummary) || InvestigationSummary.Trim().Length < 20)
+        {
+            TempData["Error"] = "กรุณาสรุปผลการตรวจสอบอย่างน้อย 20 ตัวอักษร";
+            return RedirectToPage(new { id });
+        }
+        if (string.IsNullOrWhiteSpace(InvestigationNote))
+        {
+            TempData["Error"] = "กรุณาบันทึกสิ่งที่ดำเนินการอย่างน้อยหนึ่งรายการ";
+            return RedirectToPage(new { id });
+        }
+
+        var attachments = InvestigationAttachments?.Where(f => f.Length > 0).ToList() ?? [];
+        var (filesValid, fileError) = await ValidateNoteAttachmentsAsync(attachments);
+        if (!filesValid)
+        {
+            TempData["Error"] = fileError;
+            return RedirectToPage(new { id });
+        }
+        var alreadyHasEvidence = await db.ComplaintAttachments.AnyAsync(x => x.ComplaintId == id);
+        if (!alreadyHasEvidence && attachments.Count == 0 && string.IsNullOrWhiteSpace(NoEvidenceReason))
+        {
+            TempData["Error"] = "กรุณาแนบหลักฐานหรือระบุเหตุผลที่ไม่มีหลักฐาน";
+            return RedirectToPage(new { id });
+        }
+
+        try
+        {
+            await complaintService.AddNoteAsync(
+                id, GetStaffId(), "InternalNote", InvestigationNote.Trim(), attachments);
+            await complaintService.CompleteInvestigationAsync(
+                id, InvestigationSummary ?? string.Empty, NoEvidenceReason, GetStaffId());
+            TempData["Success"] = "บันทึกผลการตรวจสอบครบถ้วนแล้ว ไปยังขั้นสรุปผล";
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["Error"] = ex.Message;
+        }
+        return RedirectToPage(new { id });
+    }
+
+    public async Task<IActionResult> OnPostPrepareClosureAsync(int id)
+    {
+        if (!await CanModifyAsync(id)) return Forbid();
+        if (!ClosureChecklistConfirmed)
+        {
+            TempData["Error"] = "กรุณาตรวจสอบและยืนยัน checklist ก่อนแจ้งผล";
+            return RedirectToPage(new { id });
+        }
+        if (string.IsNullOrWhiteSpace(CloseOpening) ||
+            !CloseOpeningOptions.TryGetValue(CloseOpening, out var openingSentence))
+        {
+            TempData["Error"] = "กรุณาเลือกประโยคขึ้นต้นสำหรับสรุปผล";
+            return RedirectToPage(new { id });
+        }
+        if (string.IsNullOrWhiteSpace(CloseResolution))
+        {
+            TempData["Error"] = "กรุณากรอกรายละเอียดสรุปผล";
+            return RedirectToPage(new { id });
+        }
+        try
+        {
+            await complaintService.PrepareClosureAsync(
+                id, $"{openingSentence} {CloseResolution?.Trim()}", GetStaffId());
+            TempData["Success"] = "ยืนยันสรุปผลแล้ว กรุณาตรวจข้อความและแจ้งผลในขั้นสุดท้าย";
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["Error"] = ex.Message;
+        }
+        return RedirectToPage(new { id });
+    }
+
+    public async Task<IActionResult> OnPostClosePreparedAsync(int id)
+    {
+        if (!await CanModifyAsync(id)) return Forbid();
+        try
+        {
+            await complaintService.ClosePreparedAsync(id, GetStaffId());
+            TempData["Success"] = "แจ้งผลและปิดเรื่องเรียบร้อยแล้ว";
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["Error"] = ex.Message;
+        }
+        return RedirectToPage(new { id });
+    }
+
+    public async Task<IActionResult> OnPostPreviousWorkflowStepAsync(int id)
+    {
+        if (!await CanModifyAsync(id)) return Forbid();
+        try
+        {
+            await complaintService.MoveToPreviousWorkflowStepAsync(id, GetStaffId());
+            TempData["Success"] = "ย้อนกลับไปขั้นตอนก่อนหน้าแล้ว ข้อมูลเดิมยังคงอยู่เพื่อให้ตรวจสอบและแก้ไขได้";
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["Error"] = ex.Message;
+        }
+        return RedirectToPage(new { id });
+    }
+
     public async Task<IActionResult> OnPostAddNoteAsync(int id)
     {
         if (!await CanModifyAsync(id)) return Forbid();
@@ -123,35 +322,6 @@ public class CaseDetailModel(
 
         await complaintService.AddNoteAsync(id, GetStaffId(), NoteType ?? "InternalNote", NoteContent.Trim(), attachments);
         TempData["Success"] = "บันทึกสำเร็จ";
-        return RedirectToPage(new { id });
-    }
-
-    public async Task<IActionResult> OnPostUpdateStatusAsync(int id)
-    {
-        if (!await CanModifyAsync(id)) return Forbid();
-        if (string.IsNullOrEmpty(NewStatus))
-        {
-            TempData["Error"] = "กรุณาเลือกสถานะ";
-            return RedirectToPage(new { id });
-        }
-
-        var complaint = await complaintService.GetByIdAsync(id);
-        if (complaint == null) return NotFound();
-        if (!AllowedStatusesFor(complaint.Status).Contains(NewStatus, StringComparer.Ordinal))
-        {
-            TempData["Error"] = "ไม่สามารถเปลี่ยนเป็นสถานะที่เลือกได้";
-            return RedirectToPage(new { id });
-        }
-
-        try
-        {
-            await complaintService.UpdateStatusAsync(id, NewStatus, GetStaffId(), null);
-            TempData["Success"] = $"อัปเดตสถานะเป็น \"{StatusLabel(NewStatus)}\" เรียบร้อย";
-        }
-        catch (InvalidOperationException ex)
-        {
-            TempData["Error"] = ex.Message;
-        }
         return RedirectToPage(new { id });
     }
 
@@ -177,13 +347,42 @@ public class CaseDetailModel(
             return RedirectToPage(new { id });
         }
 
+        var selectedDepartment = ClassificationDepartment?.Trim();
+        if (!string.IsNullOrWhiteSpace(selectedDepartment))
+        {
+            var currentDepartment = await db.Complaints
+                .Where(x => x.Id == id)
+                .Select(x => x.ResponsibleDepartment)
+                .FirstOrDefaultAsync();
+            var departmentIsAllowed = selectedDepartment == currentDepartment ||
+                await db.ComplaintDepartments.AnyAsync(x => x.IsActive && x.Name == selectedDepartment);
+            if (!departmentIsAllowed)
+            {
+                TempData["Error"] = "ฝ่ายรับผิดชอบที่เลือกไม่พร้อมใช้งาน กรุณาเลือกใหม่";
+                return RedirectToPage(new { id });
+            }
+        }
+        else
+        {
+            var categoryDepartment = await db.ComplaintCategories
+                .Where(x => x.Id == ClassificationCategoryId && x.IsActive)
+                .Select(x => x.DepartmentName)
+                .FirstOrDefaultAsync();
+            if (!string.IsNullOrWhiteSpace(categoryDepartment) &&
+                !await db.ComplaintDepartments.AnyAsync(x => x.IsActive && x.Name == categoryDepartment))
+            {
+                TempData["Error"] = "ฝ่ายเริ่มต้นของประเภทเรื่องนี้ถูกปิดใช้งาน กรุณาเลือกฝ่ายรับผิดชอบใหม่";
+                return RedirectToPage(new { id });
+            }
+        }
+
         try
         {
             await complaintService.UpdateClassificationAsync(
                 id,
                 ClassificationCategoryId,
                 ClassificationSubCategoryId > 0 ? ClassificationSubCategoryId : null,
-                ClassificationDepartment,
+                selectedDepartment,
                 GetStaffId());
             TempData["Success"] = "แก้ไขประเภทเรื่องและฝ่ายรับผิดชอบเรียบร้อยแล้ว";
         }
@@ -198,22 +397,10 @@ public class CaseDetailModel(
     public async Task<IActionResult> OnPostCloseAsync(int id)
     {
         if (!await CanModifyAsync(id)) return Forbid();
-        if (string.IsNullOrWhiteSpace(CloseOpening) ||
-            !CloseOpeningOptions.TryGetValue(CloseOpening, out var openingSentence))
-        {
-            TempData["Error"] = "กรุณาเลือกประโยคขึ้นต้นสำหรับสรุปผล";
-            return RedirectToPage(new { id });
-        }
-        if (string.IsNullOrWhiteSpace(CloseResolution))
-        {
-            TempData["Error"] = "กรุณากรอกรายละเอียดสรุปผลก่อนปิดงาน";
-            return RedirectToPage(new { id });
-        }
         try
         {
-            var finalSummary = $"{openingSentence} {CloseResolution.Trim()}";
-            await complaintService.CloseAsync(id, finalSummary, GetStaffId());
-            TempData["Success"] = "บันทึกสรุปผลและปิดงานเรียบร้อยแล้ว";
+            await complaintService.ClosePreparedAsync(id, GetStaffId());
+            TempData["Success"] = "แจ้งผลและปิดเรื่องเรียบร้อยแล้ว";
         }
         catch (InvalidOperationException ex)
         {
@@ -226,7 +413,7 @@ public class CaseDetailModel(
     {
         if (!await CanModifyAsync(id)) return Forbid();
         await complaintService.ReopenAsync(id, GetStaffId());
-        TempData["Success"] = "เปิดเรื่องใหม่เรียบร้อย กำลังดำเนินการอีกครั้ง";
+        TempData["Success"] = "เปิดเรื่องใหม่เรียบร้อย กลับไปขั้นตอนที่ 2 เพื่อตรวจสอบข้อมูลอีกครั้ง";
         return RedirectToPage(new { id });
     }
 
@@ -328,7 +515,7 @@ public class CaseDetailModel(
         var complaint = await complaintService.GetByIdAsync(id);
         if (complaint == null) return NotFound();
 
-        var recipientDepartment = await ResolvePdfDepartmentAsync();
+        var recipientDepartment = await ResolvePdfDepartmentAsync(complaint);
         if (recipientDepartment is null)
         {
             TempData["Error"] = "กรุณาเลือกฝ่ายงานที่เกี่ยวข้องก่อนสร้างเอกสาร PDF";
@@ -342,6 +529,10 @@ public class CaseDetailModel(
         var signer = await pdfSignerSettings.GetProfileAsync();
         var pdf = pdfExportService.GenerateComplaintPdf(
             complaint, officerName, maskReporter, signer, recipientDepartment);
+        await auditService.LogAsync("ExportComplaintPdf", GetStaffId(),
+            User.FindFirstValue("EmployeeCode"), "Complaint", complaint.Id.ToString(),
+            new { complaint.ReferenceNumber, maskReporter, recipientDepartment },
+            HttpContext.Connection.RemoteIpAddress?.ToString());
         var suffix = maskReporter ? "-masked" : "";
         return File(pdf, "application/pdf", $"complaint-{complaint.ReferenceNumber}{suffix}.pdf");
     }
@@ -367,6 +558,10 @@ public class CaseDetailModel(
 
         using var stream = new MemoryStream();
         workbook.SaveAs(stream);
+        await auditService.LogAsync("ExportComplaintExcel", GetStaffId(),
+            User.FindFirstValue("EmployeeCode"), "Complaint", complaint.Id.ToString(),
+            new { complaint.ReferenceNumber, containsPersonalData = true },
+            HttpContext.Connection.RemoteIpAddress?.ToString());
         return File(stream.ToArray(),
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             $"complaint-{complaint.ReferenceNumber}.xlsx");
@@ -386,6 +581,10 @@ public class CaseDetailModel(
         html.Append("</table></body></html>");
 
         var bytes = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(html.ToString())).ToArray();
+        await auditService.LogAsync("ExportComplaintWord", GetStaffId(),
+            User.FindFirstValue("EmployeeCode"), "Complaint", complaint.Id.ToString(),
+            new { complaint.ReferenceNumber, containsPersonalData = true },
+            HttpContext.Connection.RemoteIpAddress?.ToString());
         return File(bytes, "application/msword", $"complaint-{complaint.ReferenceNumber}.doc");
     }
 
@@ -403,14 +602,16 @@ public class CaseDetailModel(
         ClassificationDepartment = complaint.ResponsibleDepartment ?? complaint.Category.DepartmentName;
         ViewData["Title"] = $"เรื่อง {complaint.ReferenceNumber}";
 
-        AllowedNextStatuses = AllowedStatusesFor(complaint.Status);
-
-        PdfDepartmentOptions = await db.ComplaintCategories
-            .Where(c => c.IsActive && c.DepartmentName != null && c.DepartmentName != "")
-            .Select(c => c.DepartmentName!)
-            .Distinct()
-            .OrderBy(x => x)
+        var departmentOptions = await db.ComplaintDepartments
+            .Where(x => x.IsActive)
+            .OrderBy(x => x.SortOrder)
+            .ThenBy(x => x.Name)
+            .Select(x => x.Name)
             .ToListAsync();
+        var activeDepartmentNames = departmentOptions.ToHashSet(StringComparer.Ordinal);
+        if (!string.IsNullOrWhiteSpace(ClassificationDepartment) && !departmentOptions.Contains(ClassificationDepartment))
+            departmentOptions.Add(ClassificationDepartment);
+        PdfDepartmentOptions = departmentOptions;
 
         ClassificationCategoryOptions = await db.ComplaintCategories
             .Where(c => c.IsActive)
@@ -418,10 +619,16 @@ public class CaseDetailModel(
             .Select(c => new SelectListItem(c.Name, c.Id.ToString()))
             .ToListAsync();
         ClassificationDepartmentOptions = PdfDepartmentOptions;
+        var categoryDepartments = await db.ComplaintCategories
+            .Where(c => c.IsActive)
+            .Select(c => new { c.Id, c.DepartmentName })
+            .ToListAsync();
         ClassificationDepartmentsByCategoryJson = JsonSerializer.Serialize(
-            await db.ComplaintCategories
-                .Where(c => c.IsActive)
-                .ToDictionaryAsync(c => c.Id.ToString(), c => c.DepartmentName));
+            categoryDepartments.ToDictionary(
+                c => c.Id.ToString(),
+                c => c.DepartmentName != null && activeDepartmentNames.Contains(c.DepartmentName)
+                    ? c.DepartmentName
+                    : null));
 
         var classificationSubCategories = await db.ComplaintSubCategories
             .Where(s => s.IsActive)
@@ -445,13 +652,6 @@ public class CaseDetailModel(
         return Page();
     }
 
-    private static string[] AllowedStatusesFor(string currentStatus) => currentStatus switch
-    {
-        "Pending" => ["InProgress"],
-        "InProgress" => ["Rejected"],
-        _ => []
-    };
-
     private static IReadOnlyList<(string Label, string Value)> SingleComplaintExportRows(Models.Complaint complaint) =>
     [
         ("เลขที่อ้างอิง", complaint.ReferenceNumber),
@@ -468,7 +668,7 @@ public class CaseDetailModel(
         ("เจ้าหน้าที่ผู้รับผิดชอบ", complaint.AssignedTo?.FullName ?? "-")
     ];
 
-    private async Task<string?> ResolvePdfDepartmentAsync()
+    private async Task<string?> ResolvePdfDepartmentAsync(Models.Complaint complaint)
     {
         if (PdfDepartmentName == "__other")
         {
@@ -479,8 +679,9 @@ public class CaseDetailModel(
         var selected = PdfDepartmentName?.Trim();
         if (string.IsNullOrWhiteSpace(selected) || selected.Length > 200) return null;
 
-        return await db.ComplaintCategories.AnyAsync(c =>
-            c.IsActive && c.DepartmentName == selected)
+        var currentDepartment = complaint.ResponsibleDepartment ?? complaint.Category?.DepartmentName;
+        return selected == currentDepartment || await db.ComplaintDepartments.AnyAsync(x =>
+            x.IsActive && x.Name == selected)
             ? selected
             : null;
     }
@@ -515,15 +716,7 @@ public class CaseDetailModel(
         return (true, string.Empty);
     }
 
-    public static string StatusLabel(string s) => s switch
-    {
-        "Pending"    => "รอรับเรื่อง",
-        "InProgress" => "กำลังดำเนินการ",
-        "Resolved"   => "รอสรุปผลปิดงาน",
-        "Closed"     => "ปิดเรื่อง",
-        "Rejected"   => "ปฏิเสธ",
-        _            => s
-    };
+    public static string StatusLabel(string s) => ComplaintStatusLabels.Thai(s);
 
     public static string PriorityLabel(string p) => p switch
     {

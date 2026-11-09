@@ -1,0 +1,227 @@
+@page
+@model SRT.Complaint.Pages.Admin.DepartmentsModel
+@{
+    ViewData["Title"] = "ฝ่ายที่เกี่ยวข้อง";
+}
+
+<div class="page-header">
+    <div>
+        <p class="admin-page-eyebrow">ข้อมูลกลาง</p>
+        <h1 class="page-title">ฝ่ายที่เกี่ยวข้อง</h1>
+        <p class="page-subtitle">จัดการรายชื่อฝ่ายสำหรับการจำแนกเรื่อง การส่งต่อ และการออกเอกสาร</p>
+    </div>
+    <a href="#department-form" class="btn-primary">
+        <svg class="h-4 w-4" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v14m7-7H5" />
+        </svg>
+        เพิ่มฝ่าย
+    </a>
+</div>
+
+<div class="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+    <div class="stat-card">
+        <span class="stat-label">ฝ่ายทั้งหมด</span>
+        <span class="stat-value text-slate-900">@Model.TotalCount.ToString("N0")</span>
+    </div>
+    <div class="stat-card">
+        <span class="stat-label">เปิดใช้งาน</span>
+        <span class="stat-value text-emerald-700">@Model.ActiveCount.ToString("N0")</span>
+    </div>
+    <div class="stat-card">
+        <span class="stat-label">ปิดใช้งาน</span>
+        <span class="stat-value text-slate-500">@Model.InactiveCount.ToString("N0")</span>
+    </div>
+</div>
+
+@if (Model.EditTarget is not null)
+{
+    <section class="mb-5 rounded-xl border border-blue-200 bg-blue-50 p-5" aria-labelledby="edit-department-title">
+        <div class="mb-4 flex items-start justify-between gap-3">
+            <div>
+                <h2 id="edit-department-title" class="text-base font-bold text-blue-950">แก้ไขฝ่าย</h2>
+                <p class="mt-1 text-sm text-blue-800">หากเปลี่ยนชื่อ ระบบจะปรับชื่อในหมวดหมู่และเรื่องที่อ้างอิงอยู่ให้ตรงกัน</p>
+            </div>
+            <a asp-page="/Admin/Departments" asp-route-Search="@Model.Search" asp-route-Status="@Model.Status"
+               class="inline-flex min-h-11 items-center rounded-lg px-3 text-sm font-semibold text-blue-800 hover:bg-blue-100">
+                ยกเลิก
+            </a>
+        </div>
+        <form method="post" asp-page-handler="Edit" class="grid grid-cols-1 gap-4 lg:grid-cols-6 lg:items-end">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="EditDepartmentId" value="@Model.EditTarget.Id" />
+            <input type="hidden" name="Search" value="@Model.Search" />
+            <input type="hidden" name="Status" value="@Model.Status" />
+            <div class="lg:col-span-2">
+                <label for="edit-department-name" class="form-label">ชื่อฝ่าย <span class="text-red-600">*</span></label>
+                <input id="edit-department-name" name="EditName" value="@Model.EditTarget.Name"
+                       maxlength="200" required autocomplete="off" class="form-input" />
+            </div>
+            <div class="lg:col-span-2">
+                <label for="edit-department-description" class="form-label">คำอธิบาย</label>
+                <input id="edit-department-description" name="EditDescription" value="@Model.EditTarget.Description"
+                       maxlength="500" autocomplete="off" class="form-input" />
+            </div>
+            <div>
+                <label for="edit-department-sort" class="form-label">ลำดับ</label>
+                <input id="edit-department-sort" name="EditSortOrder" type="number" min="0"
+                       value="@Model.EditTarget.SortOrder" class="form-input" />
+            </div>
+            <button type="submit" class="btn-primary">บันทึกการแก้ไข</button>
+        </form>
+    </section>
+}
+
+<section class="filter-bar" aria-labelledby="department-filter-title">
+    <h2 id="department-filter-title" class="sr-only">ค้นหาและกรองฝ่าย</h2>
+    <form method="get" class="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_12rem_auto] md:items-end">
+        <div>
+            <label for="department-search" class="form-label">ค้นหา</label>
+            <input id="department-search" asp-for="Search" class="form-input"
+                   placeholder="ค้นหาชื่อฝ่ายหรือคำอธิบาย" autocomplete="off" />
+        </div>
+        <div>
+            <label for="department-status" class="form-label">สถานะ</label>
+            <select id="department-status" asp-for="Status" class="form-select">
+                <option value="">ทั้งหมด</option>
+                <option value="active">เปิดใช้งาน</option>
+                <option value="inactive">ปิดใช้งาน</option>
+            </select>
+        </div>
+        <div class="flex gap-2">
+            <button type="submit" class="btn-primary">ค้นหา</button>
+            <a asp-page="/Admin/Departments" class="btn-secondary">ล้าง</a>
+        </div>
+    </form>
+</section>
+
+<section class="mb-5 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm" aria-labelledby="department-list-title">
+    <div class="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+        <div>
+            <h2 id="department-list-title" class="text-base font-bold text-slate-900">รายการฝ่าย</h2>
+            <p class="mt-0.5 text-xs text-slate-500">พบ @Model.Departments.Count.ToString("N0") รายการตามเงื่อนไข</p>
+        </div>
+    </div>
+
+    @if (Model.Departments.Count == 0)
+    {
+        <div class="empty-state">
+            <div class="empty-state-icon">
+                <svg class="h-8 w-8 text-slate-400" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 21h18M5 21V7l7-4 7 4v14M9 10h.01M9 14h.01M9 18h.01M15 10h.01M15 14h.01M15 18h.01" />
+                </svg>
+            </div>
+            <h3 class="text-base font-semibold text-slate-900">ไม่พบฝ่ายที่ตรงกับเงื่อนไข</h3>
+            <p class="mt-1 text-sm text-slate-500">ลองเปลี่ยนคำค้นหาหรือล้างตัวกรอง</p>
+        </div>
+    }
+    else
+    {
+        <div class="overflow-x-auto">
+            <table class="data-table min-w-[900px]">
+                <thead>
+                    <tr>
+                        <th scope="col" class="w-20">ลำดับ</th>
+                        <th scope="col">ฝ่าย</th>
+                        <th scope="col" class="w-32 text-center">หมวดหมู่</th>
+                        <th scope="col" class="w-32 text-center">เรื่องร้องเรียน</th>
+                        <th scope="col" class="w-32">สถานะ</th>
+                        <th scope="col" class="w-72 text-right">จัดการ</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var department in Model.Departments)
+                    {
+                        <tr class="@(!department.IsActive ? "opacity-65" : "")">
+                            <td class="font-mono text-slate-500">@department.SortOrder</td>
+                            <td>
+                                <div class="font-semibold text-slate-900">@department.Name</div>
+                                @if (!string.IsNullOrWhiteSpace(department.Description))
+                                {
+                                    <div class="mt-1 max-w-xl whitespace-normal text-xs leading-5 text-slate-500">@department.Description</div>
+                                }
+                            </td>
+                            <td class="text-center tabular-nums">@department.CategoryCount.ToString("N0")</td>
+                            <td class="text-center tabular-nums">@department.ComplaintCount.ToString("N0")</td>
+                            <td>
+                                @if (department.IsActive)
+                                {
+                                    <span class="badge-resolved"><span class="badge-dot bg-emerald-500"></span>เปิดใช้งาน</span>
+                                }
+                                else
+                                {
+                                    <span class="badge-closed"><span class="badge-dot bg-slate-400"></span>ปิดใช้งาน</span>
+                                }
+                            </td>
+                            <td>
+                                <div class="flex justify-end gap-2">
+                                    <a asp-page="/Admin/Departments" asp-route-EditId="@department.Id"
+                                       asp-route-Search="@Model.Search" asp-route-Status="@Model.Status"
+                                       class="btn-secondary px-3">แก้ไข</a>
+                                    <form method="post" asp-page-handler="ToggleActive" asp-route-id="@department.Id">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="Search" value="@Model.Search" />
+                                        <input type="hidden" name="Status" value="@Model.Status" />
+                                        <button type="submit"
+                                                class="@(department.IsActive ? "btn-secondary px-3 text-amber-800" : "btn-secondary px-3 text-emerald-700")"
+                                                data-confirm="@(department.IsActive ? "ปิดใช้งานฝ่ายนี้? ฝ่ายจะไม่แสดงในรายการสำหรับเรื่องใหม่ แต่ข้อมูลเดิมยังคงอยู่" : "เปิดใช้งานฝ่ายนี้อีกครั้ง?")"
+                                                data-confirm-title="@(department.IsActive ? "ปิดใช้งานฝ่าย" : "เปิดใช้งานฝ่าย")"
+                                                data-confirm-text="@(department.IsActive ? "ปิดใช้งาน" : "เปิดใช้งาน")"
+                                                data-confirm-danger="@(department.IsActive ? "true" : "false")">
+                                            @(department.IsActive ? "ปิดใช้งาน" : "เปิดใช้งาน")
+                                        </button>
+                                    </form>
+                                    @if (department.CanDelete)
+                                    {
+                                        <form method="post" asp-page-handler="Delete" asp-route-id="@department.Id">
+                                            @Html.AntiForgeryToken()
+                                            <input type="hidden" name="Search" value="@Model.Search" />
+                                            <input type="hidden" name="Status" value="@Model.Status" />
+                                            <button type="submit" class="btn-danger px-3"
+                                                    data-confirm="ลบฝ่ายนี้ถาวร? การลบไม่สามารถย้อนกลับได้"
+                                                    data-confirm-title="ลบฝ่าย"
+                                                    data-confirm-text="ลบ"
+                                                    data-confirm-danger="true">ลบ</button>
+                                        </form>
+                                    }
+                                    else
+                                    {
+                                        <span class="inline-flex min-h-11 cursor-not-allowed items-center rounded-lg px-3 text-sm font-semibold text-slate-400"
+                                              title="ฝ่ายนี้ถูกอ้างอิงอยู่ จึงต้องปิดใช้งานแทนการลบ">ลบไม่ได้</span>
+                                    }
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+<section id="department-form" class="scroll-mt-24 rounded-xl border border-slate-200 bg-white p-5 shadow-sm" aria-labelledby="create-department-title">
+    <div class="mb-4">
+        <h2 id="create-department-title" class="text-base font-bold text-slate-900">เพิ่มฝ่ายใหม่</h2>
+        <p class="mt-1 text-sm text-slate-500">ฝ่ายใหม่จะพร้อมให้เลือกในหมวดหมู่และขั้นตอนจำแนกเรื่องทันที</p>
+    </div>
+    <form method="post" asp-page-handler="Create" class="grid grid-cols-1 gap-4 lg:grid-cols-6 lg:items-end">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="Search" value="@Model.Search" />
+        <input type="hidden" name="Status" value="@Model.Status" />
+        <div class="lg:col-span-2">
+            <label for="new-department-name" class="form-label">ชื่อฝ่าย <span class="text-red-600">*</span></label>
+            <input id="new-department-name" name="NewName" maxlength="200" required autocomplete="off"
+                   placeholder="เช่น ฝ่ายการเดินรถ" class="form-input" />
+        </div>
+        <div class="lg:col-span-2">
+            <label for="new-department-description" class="form-label">คำอธิบาย</label>
+            <input id="new-department-description" name="NewDescription" maxlength="500" autocomplete="off"
+                   placeholder="หน้าที่หรือขอบเขตความรับผิดชอบ" class="form-input" />
+        </div>
+        <div>
+            <label for="new-department-sort" class="form-label">ลำดับ</label>
+            <input id="new-department-sort" name="NewSortOrder" type="number" min="0"
+                   value="@Model.NextSortOrder" class="form-input" />
+        </div>
+        <button type="submit" class="btn-primary">เพิ่มฝ่าย</button>
+    </form>
+</section>

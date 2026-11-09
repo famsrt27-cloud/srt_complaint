@@ -35,4 +35,5 @@ public class CorruptionReport
 
     public ICollection<InvestigationLog> InvestigationLogs { get; set; } = new List<InvestigationLog>();
     public ICollection<DecryptionLog> DecryptionLogs { get; set; } = new List<DecryptionLog>();
+    public ICollection<CorruptionAttachment> Attachments { get; set; } = new List<CorruptionAttachment>();
 }

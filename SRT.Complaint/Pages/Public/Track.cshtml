@@ -25,16 +25,11 @@
 
     @if (TempData["Success"] != null)
     {
-        <div class="alert-success mb-5 animate-fade-in" role="alert">
-            <svg class="w-4 h-4 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
-                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
-            </svg>
-            @TempData["Success"]
-        </div>
+        <div hidden data-swal-toast="success">@TempData["Success"]</div>
     }
     @if (TempData["Error"] != null)
     {
-        <div class="alert-error mb-5 animate-fade-in" role="alert">@TempData["Error"]</div>
+        <div hidden data-swal-toast="error">@TempData["Error"]</div>
     }
 
     <!-- Search -->
@@ -221,6 +216,79 @@
             </div>
         </div>
 
+        @* ── Current action ── *@
+        @if (c.WorkflowStep == ComplaintWorkflowSteps.WaitingInfo)
+        {
+            <section id="additional-info" class="mb-4 rounded-2xl border-2 border-amber-300 bg-amber-50 p-5 shadow-sm" aria-labelledby="additional-info-title">
+                <div class="flex items-start gap-3">
+                    <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-800" aria-hidden="true">
+                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 4v-4z" />
+                        </svg>
+                    </div>
+                    <div class="min-w-0 flex-1">
+                        <h2 id="additional-info-title" class="text-base font-bold text-amber-950">กรุณาส่งข้อมูลเพิ่มเติม</h2>
+                        @if (Model.LatestInfoRequest != null)
+                        {
+                            <div class="mt-2 rounded-xl border border-amber-200 bg-white px-4 py-3">
+                                <p class="text-xs font-semibold text-amber-800">ข้อมูลที่เจ้าหน้าที่ต้องการ</p>
+                                <p class="mt-1 whitespace-pre-line break-words text-sm leading-6 text-gray-800">@Model.LatestInfoRequest.Content</p>
+                            </div>
+                        }
+                        @if (Model.HasReporterReplyAfterLatestRequest)
+                        {
+                            <p class="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800" role="status">
+                                ระบบได้รับข้อมูลที่ท่านส่งแล้ว ท่านยังสามารถส่งรายละเอียดเพิ่มเติมได้จนกว่าเจ้าหน้าที่จะดำเนินการต่อ
+                            </p>
+                        }
+
+                        <form method="post" asp-page-handler="AdditionalInfo" asp-route-ref="@c.ReferenceNumber"
+                              enctype="multipart/form-data" class="mt-4 space-y-3">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="Ref" value="@c.ReferenceNumber" />
+                            <div>
+                                <label for="additional-info-detail" class="form-label">รายละเอียดเพิ่มเติม <span class="text-red-600" aria-hidden="true">*</span></label>
+                                <textarea id="additional-info-detail" name="AdditionalInfo" required maxlength="2000" rows="4"
+                                          autocomplete="off" class="form-textarea w-full"
+                                          placeholder="อธิบายข้อมูลเพิ่มเติมที่เจ้าหน้าที่ขอ…"></textarea>
+                            </div>
+                            <div>
+                                <label for="additional-info-files" class="form-label">เอกสารหรือรูปภาพประกอบ <span class="font-normal text-gray-500">(ถ้ามี)</span></label>
+                                <input id="additional-info-files" type="file" name="AdditionalInfoAttachments" multiple
+                                       accept=".jpg,.jpeg,.png,.pdf,.doc,.docx"
+                                       class="file-input" />
+                                <p class="mt-1.5 text-xs text-gray-600">สูงสุด 5 ไฟล์ ไฟล์ละไม่เกิน 10 MB รองรับ JPG, PNG, PDF, DOC และ DOCX</p>
+                            </div>
+                            <button type="submit" class="btn-primary min-h-11 w-full justify-center sm:w-auto">ส่งข้อมูลให้เจ้าหน้าที่</button>
+                        </form>
+                    </div>
+                </div>
+            </section>
+        }
+        else if (c.Status is not ("Closed" or "Rejected"))
+        {
+            var nextAction = c.WorkflowStep switch
+            {
+                ComplaintWorkflowSteps.Received => "รอเจ้าหน้าที่รับเรื่องและตรวจสอบข้อมูลเบื้องต้น",
+                ComplaintWorkflowSteps.Screening => "เจ้าหน้าที่กำลังตรวจสอบความครบถ้วนของข้อมูล",
+                ComplaintWorkflowSteps.Classification => "เจ้าหน้าที่กำลังจำแนกเรื่องและกำหนดหน่วยงานรับผิดชอบ",
+                ComplaintWorkflowSteps.Investigation => "หน่วยงานที่รับผิดชอบกำลังตรวจสอบและดำเนินการ",
+                ComplaintWorkflowSteps.Summary => "เจ้าหน้าที่กำลังสรุปผลการดำเนินการ",
+                ComplaintWorkflowSteps.Notification or ComplaintWorkflowSteps.NotificationRetry => "เจ้าหน้าที่กำลังตรวจข้อความก่อนแจ้งผลและปิดเรื่อง",
+                _ => "เจ้าหน้าที่กำลังดำเนินการ"
+            };
+            <div class="mb-4 flex items-start gap-3 rounded-2xl border border-blue-200 bg-blue-50 p-4" role="status">
+                <svg class="mt-0.5 h-5 w-5 shrink-0 text-srt-navy" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div>
+                    <p class="text-xs font-semibold uppercase tracking-wide text-srt-navy">ขั้นตอนถัดไป</p>
+                    <p class="mt-1 text-sm font-medium text-gray-800">@nextAction</p>
+                    <p class="mt-1 text-xs text-gray-600">ขณะนี้ท่านยังไม่ต้องดำเนินการเพิ่มเติม</p>
+                </div>
+            </div>
+        }
+
         @* ── Status Stepper ── *@
         <div class="bg-white border border-gray-200 rounded-2xl shadow-sm px-5 py-4 mb-4">
             @{
@@ -245,7 +313,7 @@
 
                     <div class="flex flex-col items-center @(last ? "w-auto" : "flex-1")">
                         <div class="flex items-center w-full">
-                            <div class="w-8 h-8 rounded-full @circleCls flex items-center justify-center text-xs font-bold shrink-0 transition-all duration-300">
+                            <div class="w-8 h-8 rounded-full @circleCls flex items-center justify-center text-xs font-bold shrink-0 transition-colors duration-300">
                                 @if (done)
                                 {
                                     <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
@@ -265,7 +333,7 @@
                             </div>
                             @if (!last)
                             {
-                                <div class="flex-1 h-0.5 mx-2 @lineCls transition-all duration-500"></div>
+                                <div class="flex-1 h-0.5 mx-2 @lineCls transition-colors duration-500"></div>
                             }
                         </div>
                         <p class="text-[11px] @textCls mt-1.5 text-center leading-tight">@steps[si]</p>
@@ -298,6 +366,8 @@
                             "created"  => "bg-emerald-500",
                             "status"   => "bg-blue-500",
                             "reply"    => "bg-srt-navy",
+                            "request"  => "bg-amber-500",
+                            "reporter-reply" => "bg-teal-600",
                             "closed"   => "bg-slate-500",
                             "rejected" => "bg-red-400",
                             _          => "bg-gray-400"
@@ -313,7 +383,7 @@
                                             <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
                                         </svg>
                                     }
-                                    else if (ev.Type == "reply")
+                                    else if (ev.Type is "reply" or "request" or "reporter-reply")
                                     {
                                         <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -452,7 +522,7 @@
                         </fieldset>
 
                         <!-- Score label -->
-                        <p id="starLabel" class="text-center text-sm text-gray-400 h-5 mb-5 transition-all duration-150">
+                        <p id="starLabel" class="text-center text-sm text-gray-400 h-5 mb-5 transition-colors duration-150">
                             กรุณาเลือกระดับความพึงพอใจ
                         </p>
 
@@ -609,7 +679,7 @@
 
                     <div class="flex flex-col items-center @(last ? "w-auto" : "flex-1")">
                         <div class="flex items-center w-full">
-                            <div class="w-8 h-8 rounded-full @circleCls flex items-center justify-center text-xs font-bold shrink-0 transition-all duration-300">
+                            <div class="w-8 h-8 rounded-full @circleCls flex items-center justify-center text-xs font-bold shrink-0 transition-colors duration-300">
                                 @if (done)
                                 {
                                     <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
@@ -629,7 +699,7 @@
                             </div>
                             @if (!last)
                             {
-                                <div class="flex-1 h-0.5 mx-2 @lineCls transition-all duration-500"></div>
+                                <div class="flex-1 h-0.5 mx-2 @lineCls transition-colors duration-500"></div>
                             }
                         </div>
                         <p class="text-[11px] @textCls mt-1.5 text-center leading-tight">@corSteps[si]</p>
@@ -797,7 +867,7 @@
         const lbl = document.getElementById('starLabel');
         if (lbl) {
             lbl.textContent = LABELS[val];
-            lbl.className = 'text-center text-sm font-semibold h-5 mb-5 transition-all duration-150 ' + COLORS[val];
+            lbl.className = 'text-center text-sm font-semibold h-5 mb-5 transition-colors duration-150 ' + COLORS[val];
         }
     };
 

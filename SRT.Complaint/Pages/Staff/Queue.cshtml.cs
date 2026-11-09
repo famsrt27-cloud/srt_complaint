@@ -6,11 +6,12 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
 using SRT.Complaint.Data;
+using SRT.Complaint.Models;
 using SRT.Complaint.Services;
 
 namespace SRT.Complaint.Pages.Staff;
 
-[Authorize(Policy = "StaffOnly")]
+[Authorize(Policy = "GeneralComplaintAccess")]
 public class QueueModel(
     IComplaintService complaintService,
     IExternalSyncService externalSyncService,
@@ -20,6 +21,9 @@ public class QueueModel(
     [BindProperty(SupportsGet = true)] public string? Status { get; set; }
     [BindProperty(SupportsGet = true)] public string? Priority { get; set; }
     [BindProperty(SupportsGet = true)] public int? CategoryId { get; set; }
+    [BindProperty(SupportsGet = true)] public int? AssignedToId { get; set; }
+    [BindProperty(SupportsGet = true)] public string? WorkflowStep { get; set; }
+    [BindProperty(SupportsGet = true)] public string? QuickView { get; set; }
     [BindProperty(SupportsGet = true)] public DateTime? FromDate { get; set; }
     [BindProperty(SupportsGet = true)] public DateTime? ToDate { get; set; }
     [BindProperty(SupportsGet = true)] public int CurrentPage { get; set; } = 1;
@@ -31,11 +35,13 @@ public class QueueModel(
     public int PageStart => TotalCount == 0 ? 0 : (CurrentPage - 1) * PageSize + 1;
     public int PageEnd => Math.Min(CurrentPage * PageSize, TotalCount);
     public IEnumerable<SelectListItem> CategoryOptions { get; private set; } = [];
+    public IEnumerable<SelectListItem> StaffOptions { get; private set; } = [];
     public IReadOnlyList<IExternalSystemAdapter> ExternalSystems { get; private set; } = [];
 
     public async Task OnGetAsync()
     {
         ViewData["Title"] = "คิวเรื่องร้องเรียน";
+        var staffId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
         var filter = new ComplaintQueueFilter(
             Status: Status,
@@ -43,9 +49,13 @@ public class QueueModel(
             Priority: Priority,
             FromDate: FromDate,
             ToDate: ToDate,
+            AssignedToId: QuickView == "mine" ? null : AssignedToId,
             Search: Search,
             Page: CurrentPage,
-            PageSize: PageSize
+            PageSize: PageSize,
+            WorkflowStep: WorkflowStep,
+            QuickView: QuickView,
+            ViewerStaffId: staffId
         );
 
         var complaints = await complaintService.GetQueueAsync(filter);
@@ -62,6 +72,8 @@ public class QueueModel(
             PriorityLabel(c.Priority),
             c.Status,
             StatusLabel(c.Status),
+            c.WorkflowStep,
+            ComplaintWorkflowSteps.ThaiLabel(c.WorkflowStep),
             c.CreatedAt,
             c.AssignedToId,
             c.AssignedTo?.FullName,
@@ -76,6 +88,12 @@ public class QueueModel(
             .Select(c => new SelectListItem(c.Name, c.Id.ToString()))
             .ToListAsync();
 
+        StaffOptions = await db.StaffUsers
+            .Where(u => u.IsActive && (u.Role == "GeneralOfficer" || u.Role == "SuperAdmin"))
+            .OrderBy(u => u.FullName)
+            .Select(u => new SelectListItem(u.FullName, u.Id.ToString()))
+            .ToListAsync();
+
         ExternalSystems = externalSyncService.GetAvailableSystems();
     }
 
@@ -86,7 +104,7 @@ public class QueueModel(
         TempData["SyncResult"] = log.SyncStatus == "Success"
             ? $"success|{log.NewCount}|{log.DuplicateCount}|{log.FetchedCount}"
             : $"error|{log.ErrorMessage}";
-        return RedirectToPage(new { Search, Status, Priority, CategoryId, FromDate, ToDate, CurrentPage });
+        return RedirectToPage(new { Search, Status, Priority, CategoryId, AssignedToId, WorkflowStep, QuickView, FromDate, ToDate, CurrentPage });
     }
 
     public async Task<IActionResult> OnPostClaimAsync(int id)
@@ -101,7 +119,7 @@ public class QueueModel(
         {
             TempData["Error"] = ex.Message;
         }
-        return RedirectToPage(new { Search, Status, Priority, CategoryId, FromDate, ToDate, CurrentPage });
+        return RedirectToPage(new { Search, Status, Priority, CategoryId, AssignedToId, WorkflowStep, QuickView, FromDate, ToDate, CurrentPage });
     }
 
     private static string PriorityLabel(string p) => p switch
@@ -114,15 +132,7 @@ public class QueueModel(
         _          => p
     };
 
-    private static string StatusLabel(string s) => s switch
-    {
-        "Pending"    => "รอรับเรื่อง",
-        "InProgress" => "กำลังดำเนินการ",
-        "Resolved"   => "รอสรุปผลปิดงาน",
-        "Closed"     => "ปิดเรื่อง",
-        "Rejected"   => "ปฏิเสธ",
-        _            => s
-    };
+    private static string StatusLabel(string s) => ComplaintStatusLabels.Thai(s);
 
     private static string SlaText(DateTime? deadline, DateTime now)
     {
@@ -144,6 +154,8 @@ public record ComplaintQueueRowVm(
     string PriorityLabel,
     string Status,
     string StatusLabel,
+    string WorkflowStep,
+    string WorkflowLabel,
     DateTime CreatedAt,
     int? AssignedToId,
     string? AssignedToName,

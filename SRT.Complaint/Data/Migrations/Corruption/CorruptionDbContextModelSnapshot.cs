@@ -17,10 +17,48 @@ namespace SRT.Complaint.Data.Migrations.Corruption
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "9.0.18")
+                .HasAnnotation("ProductVersion", "9.0.22")
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
+
+            modelBuilder.Entity("SRT.Complaint.Models.Corruption.CorruptionAttachment", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<long>("FileSize")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("MimeType")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("ReportId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("StoredPath")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTime>("UploadedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ReportId");
+
+                    b.ToTable("Attachments", "corruption");
+                });
 
             modelBuilder.Entity("SRT.Complaint.Models.Corruption.CorruptionReport", b =>
                 {
@@ -187,6 +225,17 @@ namespace SRT.Complaint.Data.Migrations.Corruption
                     b.ToTable("InvestigationLogs", "corruption");
                 });
 
+            modelBuilder.Entity("SRT.Complaint.Models.Corruption.CorruptionAttachment", b =>
+                {
+                    b.HasOne("SRT.Complaint.Models.Corruption.CorruptionReport", "Report")
+                        .WithMany("Attachments")
+                        .HasForeignKey("ReportId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Report");
+                });
+
             modelBuilder.Entity("SRT.Complaint.Models.Corruption.DecryptionLog", b =>
                 {
                     b.HasOne("SRT.Complaint.Models.Corruption.CorruptionReport", "Report")
@@ -211,6 +260,8 @@ namespace SRT.Complaint.Data.Migrations.Corruption
 
             modelBuilder.Entity("SRT.Complaint.Models.Corruption.CorruptionReport", b =>
                 {
+                    b.Navigation("Attachments");
+
                     b.Navigation("DecryptionLogs");
 
                     b.Navigation("InvestigationLogs");

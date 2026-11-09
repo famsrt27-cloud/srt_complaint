@@ -9,12 +9,18 @@ using Microsoft.EntityFrameworkCore;
 using SRT.Complaint.Data;
 using SRT.Complaint.Models;
 using SRT.Complaint.Services;
+using System.Security.Claims;
 
 namespace SRT.Complaint.Pages.Admin;
 
 [Authorize(Policy = "SuperAdmin")]
-public class ReportsModel(AppDbContext db, IPdfExportService pdfExportService) : PageModel
+public class ReportsModel(AppDbContext db, IPdfExportService pdfExportService, IAuditService auditService) : PageModel
 {
+    [BindProperty(SupportsGet = true)] public DateTime? FromDate { get; set; }
+    [BindProperty(SupportsGet = true)] public DateTime? ToDate { get; set; }
+    [BindProperty(SupportsGet = true)] public string? Status { get; set; }
+    [BindProperty(SupportsGet = true)] public string? Priority { get; set; }
+
     public IReadOnlyList<CategoryStat>  ByCategorySeries { get; private set; } = [];
     public IReadOnlyList<StatusStat>    ByStatusSeries   { get; private set; } = [];
     public List<string>                 MonthlyLabels    { get; private set; } = [];
@@ -33,7 +39,7 @@ public class ReportsModel(AppDbContext db, IPdfExportService pdfExportService) :
 
     public async Task<IActionResult> OnPostExportAsync(string format = "excel")
     {
-        var complaints = await db.Complaints
+        var complaints = await BuildFilteredQuery()
             .Include(c => c.Category)
             .Include(c => c.SubCategory)
             .Include(c => c.AssignedTo)
@@ -45,12 +51,14 @@ public class ReportsModel(AppDbContext db, IPdfExportService pdfExportService) :
         if (string.Equals(format, "pdf", StringComparison.OrdinalIgnoreCase))
         {
             var pdf = pdfExportService.GenerateComplaintReportPdf(complaints, User.Identity?.Name);
+            await AuditExportAsync("pdf", complaints.Count);
             return File(pdf, "application/pdf", $"complaints_{stamp}.pdf");
         }
 
         if (string.Equals(format, "word", StringComparison.OrdinalIgnoreCase))
         {
             var word = BuildWordDocument(complaints);
+            await AuditExportAsync("word", complaints.Count);
             return File(word, "application/msword", $"complaints_{stamp}.doc");
         }
 
@@ -102,10 +110,20 @@ public class ReportsModel(AppDbContext db, IPdfExportService pdfExportService) :
 
         using var ms = new MemoryStream();
         wb.SaveAs(ms);
+        await AuditExportAsync("excel", complaints.Count);
         return File(ms.ToArray(),
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             $"complaints_{stamp}.xlsx");
     }
+
+    private Task AuditExportAsync(string format, int count) => auditService.LogAsync(
+        "ExportComplaintReport",
+        int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!),
+        User.FindFirstValue("EmployeeCode"),
+        "Complaint",
+        null,
+        new { format, count, containsPersonalData = true, FromDate, ToDate, Status, Priority },
+        HttpContext.Connection.RemoteIpAddress?.ToString());
 
     private static byte[] BuildWordDocument(IReadOnlyList<Models.Complaint> complaints)
     {
@@ -137,13 +155,14 @@ public class ReportsModel(AppDbContext db, IPdfExportService pdfExportService) :
 
     private async Task LoadStatsAsync()
     {
-        TotalAll      = await db.Complaints.CountAsync();
-        TotalClosed   = await db.Complaints.CountAsync(c => c.Status == "Closed");
-        TotalOpen     = await db.Complaints.CountAsync(c => c.Status != "Closed" && c.Status != "Rejected");
-        TotalBreached = await db.Complaints.CountAsync(c => c.SlaBreached && c.Status != "Closed" && c.Status != "Rejected");
+        var filtered = BuildFilteredQuery();
+        TotalAll      = await filtered.CountAsync();
+        TotalClosed   = await filtered.CountAsync(c => c.Status == "Closed");
+        TotalOpen     = await filtered.CountAsync(c => c.Status != "Closed" && c.Status != "Rejected");
+        TotalBreached = await filtered.CountAsync(c => c.SlaBreached && c.Status != "Closed" && c.Status != "Rejected");
 
         // By category
-        var catRaw = await db.Complaints
+        var catRaw = await filtered
             .Join(db.ComplaintCategories, c => c.CategoryId, cat => cat.Id, (c, cat) => cat.Name)
             .GroupBy(name => name)
             .Select(g => new { Name = g.Key, Count = g.Count() })
@@ -155,7 +174,7 @@ public class ReportsModel(AppDbContext db, IPdfExportService pdfExportService) :
             .ToList();
 
         // By status
-        var statusRaw = await db.Complaints
+        var statusRaw = await filtered
             .GroupBy(c => c.Status)
             .Select(g => new { Status = g.Key, Count = g.Count() })
             .ToListAsync();
@@ -165,7 +184,7 @@ public class ReportsModel(AppDbContext db, IPdfExportService pdfExportService) :
 
         // Monthly (last 12 months)
         var cutoff = DateTime.UtcNow.AddMonths(-11);
-        var monthly = await db.Complaints
+        var monthly = await filtered
             .Where(c => c.CreatedAt >= cutoff)
             .GroupBy(c => new { c.CreatedAt.Year, c.CreatedAt.Month })
             .Select(g => new { g.Key.Year, g.Key.Month, Count = g.Count() })
@@ -182,7 +201,7 @@ public class ReportsModel(AppDbContext db, IPdfExportService pdfExportService) :
 
         // Top staff (by closed cases, this month)
         var monthStart = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
-        var staffStats = await db.Complaints
+        var staffStats = await filtered
             .Where(c => c.Status == "Closed" && c.ClosedAt >= monthStart && c.AssignedToId != null)
             .GroupBy(c => c.AssignedToId!.Value)
             .Select(g => new { StaffId = g.Key, Closed = g.Count() })
@@ -198,6 +217,24 @@ public class ReportsModel(AppDbContext db, IPdfExportService pdfExportService) :
         TopStaff = staffStats
             .Select(x => new StaffStat(x.StaffId, staffNames.GetValueOrDefault(x.StaffId, "—"), x.Closed))
             .ToList();
+    }
+
+    private IQueryable<Models.Complaint> BuildFilteredQuery()
+    {
+        var query = db.Complaints.AsQueryable();
+        if (FromDate.HasValue)
+        {
+            var fromUtc = DateTime.SpecifyKind(FromDate.Value.Date, DateTimeKind.Local).ToUniversalTime();
+            query = query.Where(x => x.CreatedAt >= fromUtc);
+        }
+        if (ToDate.HasValue)
+        {
+            var toUtcExclusive = DateTime.SpecifyKind(ToDate.Value.Date.AddDays(1), DateTimeKind.Local).ToUniversalTime();
+            query = query.Where(x => x.CreatedAt < toUtcExclusive);
+        }
+        if (!string.IsNullOrWhiteSpace(Status)) query = query.Where(x => x.Status == Status);
+        if (!string.IsNullOrWhiteSpace(Priority)) query = query.Where(x => x.Priority == Priority);
+        return query;
     }
 }
 

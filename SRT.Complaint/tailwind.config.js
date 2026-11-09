@@ -35,7 +35,7 @@ module.exports = {
         },
       },
       fontFamily: {
-        'thai': ['Sarabun', 'sans-serif'],
+        'thai': ['Noto Sans Thai', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
       },
       fontSize: {
         'th-sm': ['0.9375rem', { lineHeight: '1.5rem' }],
@@ -84,7 +84,5 @@ module.exports = {
       },
     },
   },
-  plugins: [
-    require('@tailwindcss/forms'),
-  ],
+  plugins: [],
 };

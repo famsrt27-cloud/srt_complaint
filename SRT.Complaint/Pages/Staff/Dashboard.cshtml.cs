@@ -4,7 +4,7 @@ using SRT.Complaint.Services;
 
 namespace SRT.Complaint.Pages.Staff;
 
-[Authorize(Policy = "StaffOnly")]
+[Authorize(Policy = "GeneralComplaintAccess")]
 public class DashboardModel(IComplaintService complaintService) : PageModel
 {
     public DashboardStats Stats { get; private set; } = null!;

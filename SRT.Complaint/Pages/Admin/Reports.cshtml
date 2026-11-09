@@ -1,8 +1,27 @@
 @page
 @model SRT.Complaint.Pages.Admin.ReportsModel
+@using SRT.Complaint.Models
 @{
     ViewData["Title"] = "รายงาน";
 }
+
+<div class="page-header">
+    <div>
+        <p class="admin-page-eyebrow">ข้อมูลเชิงบริหาร</p>
+        <h1 class="page-title">รายงานและสถิติ</h1>
+        <p class="page-subtitle">ติดตามแนวโน้ม ปริมาณคำร้อง สถานะ และผลการดำเนินงานตามช่วงเวลา</p>
+    </div>
+</div>
+
+<form method="get" class="mb-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <div><label for="report-from" class="form-label">ตั้งแต่วันที่</label><input id="report-from" name="FromDate" value="@Model.FromDate?.ToString("yyyy-MM-dd")" type="date" class="form-input" /></div>
+        <div><label for="report-to" class="form-label">ถึงวันที่</label><input id="report-to" name="ToDate" value="@Model.ToDate?.ToString("yyyy-MM-dd")" type="date" class="form-input" /></div>
+        <div><label for="report-status" class="form-label">สถานะ</label><select id="report-status" name="Status" class="form-select"><option value="">ทุกสถานะ</option>@foreach (var status in new[] { "Pending", "InProgress", "WaitingInfo", "Forwarded", "Resolved", "Closed", "Rejected" }) { <option value="@status" selected="@(Model.Status == status)">@status</option> }</select></div>
+        <div><label for="report-priority" class="form-label">ความสำคัญ</label><select id="report-priority" name="Priority" class="form-select"><option value="">ทุกระดับ</option>@foreach (var priority in new[] { "Critical", "Urgent", "High", "Normal", "Low" }) { <option value="@priority" selected="@(Model.Priority == priority)">@priority</option> }</select></div>
+        <div class="flex items-end gap-2"><button type="submit" class="btn-primary min-h-11 flex-1">แสดงรายงาน</button><a asp-page="/Admin/Reports" class="btn-secondary min-h-11">ล้าง</a></div>
+    </div>
+</form>
 
 <!-- ══ Summary Cards ══ -->
 <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -127,6 +146,10 @@
     </div>
     <form method="post" asp-page-handler="Export" class="flex flex-wrap gap-3">
         @Html.AntiForgeryToken()
+        <input type="hidden" asp-for="FromDate" />
+        <input type="hidden" asp-for="ToDate" />
+        <input type="hidden" asp-for="Status" />
+        <input type="hidden" asp-for="Priority" />
         <button type="submit" name="format" value="excel"
                 class="flex items-center gap-2 bg-green-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium
                        hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-600 focus:ring-offset-2 transition">
@@ -215,7 +238,7 @@
         new Chart(document.getElementById('statusChart'), {
             type: 'doughnut',
             data: {
-                labels: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.ByStatusSeries.Select(x => x.Status).ToList())),
+                labels: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.ByStatusSeries.Select(x => ComplaintStatusLabels.Thai(x.Status)).ToList())),
                 datasets: [{
                     data: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.ByStatusSeries.Select(x => x.Count).ToList())),
                     backgroundColor: statusColors,

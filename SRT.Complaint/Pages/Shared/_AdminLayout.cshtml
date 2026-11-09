@@ -1,0 +1,300 @@
+@using System.Security.Claims
+@inject SRT.Complaint.Services.IComplaintService ComplaintServiceForBell
+@inject SRT.Complaint.Services.ICorruptionService CorruptionServiceForBell
+@{
+    var userName = User.FindFirstValue("FullName") ?? User.Identity?.Name ?? "ผู้ดูแลระบบ";
+    var empCode = User.FindFirstValue("EmployeeCode") ?? "";
+    var currentPath = ViewContext.HttpContext.Request.Path.Value ?? "";
+    bool IsActive(params string[] prefixes) => prefixes.Any(prefix =>
+        currentPath.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+    string NavClass(bool active) => active
+        ? "admin-nav-link admin-nav-link-active"
+        : "admin-nav-link";
+
+    var notificationBell = await SRT.Complaint.Pages.Staff.NotificationBadgeModel.BuildAsync(
+        User, ComplaintServiceForBell, CorruptionServiceForBell);
+}
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light" />
+    <title>@ViewData["Title"] — Admin รฟท.</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/lib/sweetalert2/sweetalert2.min.css" asp-append-version="true" />
+    @await RenderSectionAsync("Head", required: false)
+</head>
+<body class="admin-shell min-h-dvh bg-slate-50 font-thai text-slate-900 antialiased">
+    <a href="#main-content"
+       class="sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:not-sr-only focus:rounded-lg focus:bg-srt-navy focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-white focus:shadow-lg">
+        ข้ามไปยังเนื้อหาหลัก
+    </a>
+
+    <nav class="fixed inset-x-0 top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur" aria-label="แถบเครื่องมือผู้ดูแลระบบ">
+        <div class="flex h-16 items-center justify-between px-4 sm:px-6">
+            <div class="flex min-w-0 items-center gap-3">
+                <button type="button"
+                        id="admin-sidebar-toggle"
+                        aria-controls="admin-sidebar"
+                        aria-expanded="false"
+                        class="inline-flex h-11 w-11 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-srt-navy lg:hidden"
+                        aria-label="เปิดเมนูผู้ดูแลระบบ">
+                    <svg class="h-5 w-5" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+                    </svg>
+                </button>
+                <a asp-page="/Admin/Dashboard" class="flex min-w-0 items-center gap-3" aria-label="หน้าหลักผู้ดูแลระบบ">
+                    <img src="~/images/srt-logo.png" class="h-10 w-auto object-contain" alt="การรถไฟแห่งประเทศไทย" />
+                    <span class="hidden border-l border-slate-200 pl-3 sm:block">
+                        <span class="block text-sm font-bold leading-tight text-srt-navy">Complaint Admin</span>
+                        <span class="block text-[11px] leading-tight text-slate-500">การรถไฟแห่งประเทศไทย</span>
+                    </span>
+                </a>
+                <div class="hidden min-w-0 items-center gap-2 border-l border-slate-200 pl-4 xl:flex" aria-label="ตำแหน่งหน้าปัจจุบัน">
+                    <span class="text-xs font-medium text-slate-400">ผู้ดูแลระบบ</span>
+                    <svg class="h-3.5 w-3.5 text-slate-300" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m9 18 6-6-6-6" /></svg>
+                    <span class="max-w-72 truncate text-sm font-semibold text-slate-700">@ViewData["Title"]</span>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-2 sm:gap-3">
+                <time datetime="@DateTime.UtcNow.ToString("yyyy-MM-dd")" class="hidden text-xs font-medium text-slate-500 lg:block">
+                    @DateTime.Now.ToString("d MMMM yyyy", new System.Globalization.CultureInfo("th-TH"))
+                </time>
+                @await Html.PartialAsync("_NotificationBell", notificationBell)
+
+                <button type="button"
+                        id="admin-user-menu-button"
+                        data-dropdown-toggle="admin-user-menu"
+                        data-dropdown-placement="bottom-end"
+                        class="flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-2 text-sm hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-srt-navy"
+                        aria-expanded="false">
+                    <span class="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 text-blue-700 ring-1 ring-blue-100">
+                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.5 20.1a7.5 7.5 0 0115 0 17.9 17.9 0 01-15 0z" /></svg>
+                    </span>
+                    <span class="hidden max-w-40 truncate font-semibold text-slate-700 md:block">@userName</span>
+                    <svg class="hidden h-4 w-4 text-slate-400 md:block" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m19 9-7 7-7-7" />
+                    </svg>
+                    <span class="sr-only">เปิดเมนูบัญชีผู้ใช้</span>
+                </button>
+
+                <div id="admin-user-menu" class="z-50 hidden w-60 divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white text-sm shadow-xl">
+                    <div class="px-4 py-3">
+                        <p class="truncate font-semibold text-slate-900">@userName</p>
+                        <p class="truncate text-xs text-slate-500">ผู้ดูแลระบบ@(string.IsNullOrWhiteSpace(empCode) ? "" : $" · {empCode}")</p>
+                    </div>
+                    <ul class="p-2" aria-labelledby="admin-user-menu-button">
+                        <li><a asp-page="/Staff/ChangePassword" class="block rounded-lg px-3 py-2 text-slate-700 hover:bg-slate-100">เปลี่ยนรหัสผ่าน</a></li>
+                        <li><a asp-page="/Staff/Dashboard" class="block rounded-lg px-3 py-2 text-slate-700 hover:bg-slate-100">กลับไปงานรับเรื่อง</a></li>
+                        <li><a asp-page="/Index" class="block rounded-lg px-3 py-2 text-slate-700 hover:bg-slate-100">เปิดเว็บไซต์ประชาชน</a></li>
+                    </ul>
+                    <div class="p-2">
+                        <form method="post" asp-page="/Staff/Logout">
+                            @Html.AntiForgeryToken()
+                            <button type="submit" class="w-full rounded-lg px-3 py-2 text-left font-medium text-red-700 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500">
+                                ออกจากระบบ
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div id="admin-sidebar-backdrop"
+         class="fixed inset-0 z-30 hidden bg-slate-900/50 lg:hidden"
+         aria-hidden="true"></div>
+
+    <aside id="admin-sidebar"
+           class="fixed left-0 top-0 z-40 h-dvh w-64 max-w-[calc(100vw-3rem)] -translate-x-full border-r border-slate-200 bg-white pt-16 shadow-xl transition-transform motion-reduce:transition-none lg:translate-x-0 lg:shadow-none"
+           aria-label="เมนูผู้ดูแลระบบ"
+           aria-hidden="true"
+           inert>
+        <div class="flex h-full flex-col overflow-y-auto px-3 py-4 scrollbar-thin">
+            <div class="mb-4 flex items-center justify-between border-b border-slate-200 pb-3 lg:hidden">
+                <p class="px-2 text-sm font-bold text-srt-navy">เมนูผู้ดูแลระบบ</p>
+                <button type="button"
+                        id="admin-sidebar-close"
+                        aria-controls="admin-sidebar"
+                        class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-srt-navy"
+                        aria-label="ปิดเมนูผู้ดูแลระบบ">
+                    <svg class="h-5 w-5" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18 18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+
+            <nav class="flex-1 space-y-6">
+                <div>
+                    <p class="admin-nav-section">ภาพรวม</p>
+                    <ul class="space-y-1">
+                        <li>
+                            <a asp-page="/Admin/Dashboard" class="@NavClass(IsActive("/Admin/Dashboard"))">
+                                <svg class="h-5 w-5" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 13h6V4H4v9Zm0 7h6v-4H4v4Zm10 0h6v-9h-6v9Zm0-12h6V4h-6v4Z" /></svg>
+                                <span>แดชบอร์ด</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a asp-page="/Admin/Reports" class="@NavClass(IsActive("/Admin/Reports"))">
+                                <svg class="h-5 w-5" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 19V9m5 10V5m5 14v-7m5 7V3" /></svg>
+                                <span>รายงานและสถิติ</span>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+
+                <div>
+                    <p class="admin-nav-section">ตั้งค่าระบบ</p>
+                    <ul class="space-y-1">
+                        <li><a asp-page="/Admin/Users" class="@NavClass(IsActive("/Admin/Users"))"><svg class="h-5 w-5" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m7-10a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm13 10v-2a4 4 0 0 0-3-3.87m-2-12a4 4 0 0 1 0 7.75" /></svg><span>เจ้าหน้าที่</span></a></li>
+                        <li><a asp-page="/Admin/Categories" class="@NavClass(IsActive("/Admin/Categories"))"><svg class="h-5 w-5" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="m20 13-7 7-9-9V4h7l9 9ZM8.5 8.5h.01" /></svg><span>หมวดหมู่</span></a></li>
+                        <li><a asp-page="/Admin/Departments" class="@NavClass(IsActive("/Admin/Departments"))"><svg class="h-5 w-5" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 21h18M5 21V7l7-4 7 4v14M9 10h.01M9 14h.01M9 18h.01M15 10h.01M15 14h.01M15 18h.01" /></svg><span>ฝ่ายที่เกี่ยวข้อง</span></a></li>
+                        <li><a asp-page="/Admin/SlaSettings" class="@NavClass(IsActive("/Admin/SlaSettings"))"><svg class="h-5 w-5" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 8v4l3 2m6-2a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg><span>ข้อตกลง SLA</span></a></li>
+                        <li><a asp-page="/Admin/Notifications" class="@NavClass(IsActive("/Admin/Notifications"))"><svg class="h-5 w-5" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9Zm-8 13h4" /></svg><span>การแจ้งเตือน</span></a></li>
+                        <li><a asp-page="/Admin/ExternalSync" class="@NavClass(IsActive("/Admin/ExternalSync"))"><svg class="h-5 w-5" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M20 7h-9m3-3-3 3 3 3M4 17h9m-3-3 3 3-3 3" /></svg><span>เชื่อมต่อภายนอก</span></a></li>
+                    </ul>
+                </div>
+
+                <div>
+                    <p class="admin-nav-section">เนื้อหาเว็บไซต์</p>
+                    <ul class="space-y-1">
+                        <li><a asp-page="/Admin/Terms" class="@NavClass(IsActive("/Admin/Terms"))"><svg class="h-5 w-5" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M6 3h9l3 3v15H6V3Zm3 6h6m-6 4h6m-6 4h4" /></svg><span>หลักเกณฑ์ร้องเรียน</span></a></li>
+                        <li><a asp-page="/Admin/HomeContent" class="@NavClass(IsActive("/Admin/HomeContent"))"><svg class="h-5 w-5" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="m3 11 9-8 9 8v10h-6v-6H9v6H3V11Z" /></svg><span>หน้าแรก</span></a></li>
+                        <li><a asp-page="/Admin/PdfSettings" class="@NavClass(IsActive("/Admin/PdfSettings"))"><svg class="h-5 w-5" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M6 2h9l4 4v16H6V2Zm8 0v5h5M9 13h6m-6 4h6" /></svg><span>เอกสาร PDF</span></a></li>
+                    </ul>
+                </div>
+
+                <div>
+                    <p class="admin-nav-section">นักพัฒนาและความปลอดภัย</p>
+                    <ul class="space-y-1">
+                        <li><a asp-page="/Admin/ApiKeys" class="@NavClass(IsActive("/Admin/ApiKeys", "/Admin/ApiKeyUsage"))"><svg class="h-5 w-5" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15 7a4 4 0 1 1-2.8 6.85L4 22H2v-4l7.15-7.2A4 4 0 0 1 15 7Z" /></svg><span>API Keys</span></a></li>
+                        <li><a asp-page="/Admin/Webhooks" class="@NavClass(IsActive("/Admin/Webhooks"))"><svg class="h-5 w-5" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M18 16a3 3 0 1 1-2.83 4H9a5 5 0 0 1-4.9-4M6 8a3 3 0 1 1 2.83-4H15a5 5 0 0 1 4.9 4M8 8l4 7m4-7-4 7" /></svg><span>Webhooks</span></a></li>
+                        <li><a asp-page="/Admin/AuditLog" class="@NavClass(IsActive("/Admin/AuditLog"))"><svg class="h-5 w-5" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 12h6m-6 4h6M7 3h10a2 2 0 0 1 2 2v16H5V5a2 2 0 0 1 2-2Z" /></svg><span>Audit Log</span></a></li>
+                    </ul>
+                </div>
+            </nav>
+
+            <div class="mt-6 border-t border-slate-200 pt-4">
+                <a asp-page="/Staff/Dashboard" class="admin-nav-link">
+                    <svg class="h-5 w-5" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="m15 18-6-6 6-6" /></svg>
+                    <span>กลับไปหน้าปฏิบัติงาน</span>
+                </a>
+            </div>
+        </div>
+    </aside>
+
+    <div class="min-h-dvh pt-16 lg:ml-64">
+        @if (TempData["Success"] is string successMessage)
+        {
+            <div hidden data-swal-toast="success">@successMessage</div>
+        }
+        @if (TempData["Error"] is string errorMessage)
+        {
+            <div hidden data-swal-toast="error">@errorMessage</div>
+        }
+        @if (TempData["Warning"] is string warningMessage)
+        {
+            <div hidden data-swal-toast="warning">@warningMessage</div>
+        }
+
+        <main id="main-content" tabindex="-1" class="mx-auto w-full max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+            @RenderBody()
+        </main>
+    </div>
+
+    <script src="~/lib/htmx.min.js" defer></script>
+    <script src="~/lib/flowbite/flowbite.min.js" defer></script>
+    <script src="~/lib/sweetalert2/sweetalert2.all.min.js" asp-append-version="true" defer></script>
+    <script src="~/js/site.js" asp-append-version="true" defer></script>
+    <script>
+        (() => {
+            const sidebar = document.getElementById('admin-sidebar');
+            const backdrop = document.getElementById('admin-sidebar-backdrop');
+            const toggle = document.getElementById('admin-sidebar-toggle');
+            const closeButton = document.getElementById('admin-sidebar-close');
+            const desktopMedia = window.matchMedia('(min-width: 1024px)');
+
+            if (!sidebar || !backdrop || !toggle || !closeButton) return;
+
+            const setMobileOpen = (open, restoreFocus = false) => {
+                if (desktopMedia.matches) return;
+
+                sidebar.classList.toggle('-translate-x-full', !open);
+                sidebar.toggleAttribute('inert', !open);
+                sidebar.setAttribute('aria-hidden', String(!open));
+                backdrop.classList.toggle('hidden', !open);
+                document.body.classList.toggle('overflow-hidden', open);
+                toggle.setAttribute('aria-expanded', String(open));
+                toggle.setAttribute('aria-label', open ? 'ปิดเมนูผู้ดูแลระบบ' : 'เปิดเมนูผู้ดูแลระบบ');
+
+                if (open) {
+                    closeButton.focus();
+                } else if (restoreFocus) {
+                    toggle.focus();
+                }
+            };
+
+            const syncForViewport = () => {
+                document.body.classList.remove('overflow-hidden');
+                backdrop.classList.add('hidden');
+                toggle.setAttribute('aria-expanded', 'false');
+                toggle.setAttribute('aria-label', 'เปิดเมนูผู้ดูแลระบบ');
+
+                if (desktopMedia.matches) {
+                    sidebar.removeAttribute('inert');
+                    sidebar.removeAttribute('aria-hidden');
+                } else {
+                    sidebar.classList.add('-translate-x-full');
+                    sidebar.setAttribute('inert', '');
+                    sidebar.setAttribute('aria-hidden', 'true');
+                }
+            };
+
+            toggle.addEventListener('click', () => {
+                setMobileOpen(toggle.getAttribute('aria-expanded') !== 'true');
+            });
+            closeButton.addEventListener('click', () => setMobileOpen(false, true));
+            backdrop.addEventListener('click', () => setMobileOpen(false, true));
+
+            document.addEventListener('keydown', event => {
+                if (desktopMedia.matches || toggle.getAttribute('aria-expanded') !== 'true') return;
+
+                if (event.key === 'Escape') {
+                    event.preventDefault();
+                    setMobileOpen(false, true);
+                    return;
+                }
+
+                if (event.key !== 'Tab') return;
+                const focusable = [...sidebar.querySelectorAll(
+                    'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+                )].filter(element => !element.hasAttribute('hidden'));
+                if (!focusable.length) return;
+
+                const first = focusable[0];
+                const last = focusable[focusable.length - 1];
+                if (event.shiftKey && document.activeElement === first) {
+                    event.preventDefault();
+                    last.focus();
+                } else if (!event.shiftKey && document.activeElement === last) {
+                    event.preventDefault();
+                    first.focus();
+                }
+            });
+
+            desktopMedia.addEventListener('change', syncForViewport);
+            syncForViewport();
+        })();
+    </script>
+    <script>
+        document.addEventListener('htmx:afterSwap', () => window.initFlowbite?.());
+    </script>
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

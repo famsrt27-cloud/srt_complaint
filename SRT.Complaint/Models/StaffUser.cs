@@ -15,6 +15,7 @@ public class StaffUser
     public bool MustChangePassword { get; set; } = false;
     public DateTime? TempPasswordExpiresAt { get; set; }
     public byte[]? TempPasswordEncrypted { get; set; }
+    public int AuthVersion { get; set; } = 1;
 
     public ICollection<Complaint> AssignedComplaints { get; set; } = new List<Complaint>();
 }

@@ -41,7 +41,7 @@ Deploy: IIS Application บน GDCC
 | ส่วน | เทคโนโลยี | เวอร์ชัน |
 |---|---|---|
 | Framework | ASP.NET Core (Razor Pages) | .NET 9 |
-| Frontend | Tailwind CSS + HTMX | Tailwind 3 |
+| Frontend | Tailwind CSS + HTMX + SweetAlert2 | Tailwind 4 / SweetAlert2 11.26.25 |
 | Database | SQL Server + EF Core + Dapper | EF Core 9 |
 | Auth (Web) | ASP.NET Core Cookie Auth | — |
 | Auth (API) | JWT Bearer | — |
@@ -100,20 +100,26 @@ srt_complaint_newversion/
 ## ฟีเจอร์หลัก
 
 ### ประชาชน (Public)
-- ยื่นเรื่องร้องเรียนทั่วไป พร้อมแนบไฟล์สูงสุด 5 ไฟล์ (JPG, PNG, PDF, DOC, DOCX, ≤10 MB/ไฟล์)
+- ยื่นเรื่องร้องเรียนทั่วไป พร้อมแนบไฟล์สูงสุด 10 ไฟล์ (JPG, PNG, PDF, DOC, DOCX, ≤10 MB/ไฟล์ และรวมไม่เกิน 50 MB)
 - แจ้งเบาะแสทุจริต — ข้อมูลผู้แจ้งเข้ารหัส AES-256 ทันทีก่อนบันทึก
 - ติดตามสถานะเรื่องด้วยเลขอ้างอิง + เบอร์โทร 4 หลักท้าย
+- ตอบคำขอข้อมูลเพิ่มเติมและแนบเอกสารผ่านหน้าติดตามได้ โดยไม่ต้องสร้างเรื่องใหม่
 - รับอีเมล/SMS แจ้งผลทุกขั้นตอน
 
 ### เจ้าหน้าที่ (Staff)
 - Dashboard แสดง Queue เรื่องที่รอดำเนินการ
-- รับเรื่อง โอนเรื่อง อัปเดตสถานะ เพิ่มบันทึกภายใน
+- ดำเนินเรื่องตาม Guided Workflow 6 ขั้น โดยสถานะเปลี่ยนตามขั้นตอนที่อนุญาต
+- ใช้ Quick View ในคิวเพื่อดูงานของฉัน งานรอข้อมูล ข้อมูลเข้าใหม่ งานเกิน SLA และงานพร้อมปิด
+- รับเรื่อง โอนเรื่อง เพิ่มบันทึกภายใน และตอบกลับผู้ร้อง
+- ค้นหาเรื่องจากแถบด้านบน และแนบไฟล์หลักฐานได้เมื่อเจ้าหน้าที่สร้างเรื่องแทนประชาชน
+- มอบหมายเรื่องอัตโนมัติให้เจ้าหน้าที่ทั่วไปที่มีงานค้างน้อยที่สุดตามค่า `AutoAssignAfterHours`
 - Export PDF รายงานเรื่องร้องเรียน
-- ดู Workload ภาพรวมการทำงาน
 - **ดึงคำร้องจากระบบภายนอก** — ปุ่ม "ดึงคำร้อง" ใน Queue เปิด modal เลือกหน่วยงานที่มี adapter และตั้งค่าพร้อมใช้งาน
 
 ### เจ้าหน้าที่ทุจริต (Corruption Officer)
 - Dashboard และ Queue แยกจากเรื่องทั่วไปสมบูรณ์
+- เปิดดูและดาวน์โหลดไฟล์หลักฐานของเรื่องทุจริตได้ โดยบันทึกการดาวน์โหลดใน Audit Log
+- บังคับลำดับสถานะ `Pending → InProgress → UnderReview → Closed/Rejected` และเก็บสรุปผลก่อนปิดเรื่อง
 - เข้าถึงข้อมูลผู้แจ้งได้เฉพาะเมื่อมีเหตุผลอันสมควร (มีการบันทึก)
 
 ### Super Admin
@@ -158,7 +164,6 @@ srt_complaint_newversion/
 | `/Staff/Queue` | คิวเรื่องร้องเรียน |
 | `/Staff/CaseDetail?id={id}` | รายละเอียดเรื่อง |
 | `/Staff/CreateComplaint` | สร้างเรื่องแทนประชาชน |
-| `/Staff/Workload` | ภาพรวม Workload |
 | `/Staff/ChangePassword` | เปลี่ยนรหัสผ่าน |
 
 ### Corruption (ต้อง Login — Role: CorruptionOfficer, SuperAdmin)
@@ -188,6 +193,42 @@ srt_complaint_newversion/
 ---
 
 ## REST API
+
+> **API ปัจจุบันคือ Partner API v1 เท่านั้น:** ใช้ route prefix `/api/v1` และดู contract ล่าสุดที่ [`API.md`](API.md) หรือ OpenAPI runtime ที่ `/openapi/v1.json` ข้อความ route `/api/...` ที่ไม่มี `/v1` ในเอกสารหรือ integration รุ่นเก่าไม่ใช่ public contract ปัจจุบัน
+
+ภาพรวม API v1:
+
+- 16 endpoints ครอบคลุม complaints, metadata, statistics และ signed webhooks
+- Authentication ด้วย `X-API-Key` ผูก Partner, environment, scopes, expiry, IP allowlist และ rate limit
+- External key เห็นเฉพาะข้อมูล Partner ตนเอง (`DataAccessMode=Own`); การขอข้อมูลข้าม Partner ตอบ `404`
+- `POST /api/v1/complaints` บังคับ `Idempotency-Key` และตรวจ category/subcategory ที่ active
+- Complaint response มีทั้งสถานะภาพรวม `status` และขั้นตอน back-office `workflowStep`
+- Status update สงวนให้ Internal key, บังคับ transition matrix และใช้ `ETag`/`If-Match` ป้องกัน lost update
+- Rate-limit response ส่ง `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset` และ `Retry-After` เมื่อได้ `429`
+- โหมดหลาย instance ใช้ Redis quota/session ร่วม; Data Protection key ring เก็บในฐานข้อมูลและเข้ารหัสด้วย certificate ใน Production
+- Webhook ใช้ HMAC-SHA256, ป้องกัน SSRF, ตรวจ ownership ตอนลบ และจำกัด 10 active webhooks ต่อ API key
+- Error ใช้ envelope `{ "error": { "code", "message", "traceId" } }`
+
+ตัวอย่าง:
+
+```http
+GET /api/v1/complaints?page=1&pageSize=20
+Accept: application/json
+X-API-Key: <secret>
+```
+
+เอกสารที่เกี่ยวข้อง:
+
+- [API contract และ endpoint inventory](API.md)
+- [คู่มือ Partner API v1](docs/partner-api-v1-integration-guide.md)
+- [Operations runbook](docs/api-v1-operations-runbook.md)
+- [Security review](docs/api-security-review-phase1.md)
+- [API review update — 2026-11-03](docs/api-security-review-2026-11-03.md)
+- [Postman collection](docs/srt-complaint-api-v1.postman_collection.json)
+
+### หมายเหตุเกี่ยวกับเนื้อหารุ่นเดิมด้านล่าง
+
+ส่วนด้านล่างเก็บไว้เพื่ออ้างอิงระบบเดิมเท่านั้น หาก route หรือ response ขัดกับ `API.md` ให้ยึด `API.md` และ `/openapi/v1.json` เป็นหลัก
 
 ### Authentication
 ทุก endpoint ต้องส่ง Header:
@@ -226,7 +267,7 @@ DELETE /api/webhooks/{id}    ลบ Webhook
 | `complaints:read` | GET ดูรายละเอียดเรื่องร้องเรียน |
 | `complaints:write` | POST สร้างเรื่องร้องเรียนใหม่ |
 | `complaints:status` | GET ดูสถานะเรื่องร้องเรียน |
-| `complaints:update` | PUT อัปเดตสถานะเรื่องร้องเรียน |
+| `complaints:update` | PUT อัปเดตสถานะเรื่องร้องเรียน (Internal key เท่านั้น) |
 | `complaints:edoc` | GET ดึงข้อมูล e-Document payload |
 | `stats:summary` | GET สถิติสรุปเรื่องร้องเรียน |
 | `stats:detailed` | GET สถิติละเอียดแยกตามประเภท/ลำดับความสำคัญ |
@@ -495,6 +536,12 @@ icacls "C:\inetpub\wwwroot\complaint\logs" /grant "IIS AppPool\SRTComplaint:(OI)
 | `Turnstile__SiteKey` | `<Cloudflare Site Key>` | |
 | `Turnstile__SecretKey` | `<Cloudflare Secret Key>` | |
 | `FileUpload__StoragePath` | `C:\SRT_Uploads\Complaints\` | |
+| `DistributedRuntime__Mode` | `MultiInstance` | ใช้เมื่อ deploy มากกว่าหนึ่ง instance |
+| `DistributedRuntime__RateLimitProvider` | `Redis` หรือ `Gateway` | ต้องเป็น distributed เมื่อใช้ MultiInstance |
+| `DistributedRuntime__RedisConnection` | `<Redis connection secret>` | ใช้กับ distributed session และ Redis limiter |
+| `DataProtection__ApplicationName` | `SRT.Complaint.Production` | ต้องตรงกันทุก instance |
+| `DataProtection__CertificateThumbprint` | `<certificate thumbprint>` | บังคับใน Production เพื่อป้องกัน key at rest |
+| `DataProtection__CertificateStoreLocation` | `LocalMachine` | หรือ `CurrentUser` ตามบัญชีที่รันแอป |
 > ใช้ `__` (สองขีดล่าง) แทน `:` ใน key name เสมอ
 
 **วิธีที่ 2: แก้ไข applicationHost.config โดยตรง**
@@ -610,6 +657,7 @@ dotnet ef migrations script --project SRT.Complaint --context AppDbContext -o mi
 [ ] เปิดหน้า https://www.railway.co.th/complaint/ — โหลดได้ปกติ
 [ ] ทดสอบยื่นเรื่องร้องเรียนทั่วไป — รับเลขอ้างอิง
 [ ] ทดสอบติดตามเรื่อง — ดูสถานะได้
+[ ] ทดสอบขอข้อมูลเพิ่มเติม — ผู้ร้องเห็นคำขอ ส่งข้อความ/ไฟล์ได้ และเจ้าหน้าที่พบในคิว “ข้อมูลเข้าใหม่”
 [ ] ทดสอบยื่นเรื่องทุจริต — ข้อมูลถูก mask ในหน้ารายการ
 [ ] Login เจ้าหน้าที่ด้วย EmployeeCode 0000001 — ระบบบังคับเปลี่ยนรหัสผ่าน
 [ ] เปลี่ยนรหัสผ่าน Admin — Login ใหม่ได้
@@ -987,7 +1035,13 @@ dotnet ef migrations add MigrationName \
 dotnet ef database update \
   --project SRT.Complaint \
   --context AppDbContext
+
+dotnet ef database update \
+  --project SRT.Complaint \
+  --context CorruptionDbContext
 ```
+
+> รุ่นนี้ต้อง apply **ทั้ง 2 context**: `AppDbContext` เพิ่ม `StaffUsers.AuthVersion`, `NotificationDeliveryLogs` และตัวติดตามการเตือน SLA; `CorruptionDbContext` เพิ่มตาราง `corruption.Attachments`
 
 ### ย้อนกลับ Migration
 ```bash
@@ -1009,6 +1063,10 @@ dotnet ef database update PreviousMigrationName \
 | `AddComplaintTerms` | เพิ่มตารางข้อตกลงและเงื่อนไข |
 | `AddContentBlocks` | เพิ่มตารางเนื้อหาหน้าแรก |
 | `Corruption/AddCorruptionSeq` | เพิ่ม sequence สำหรับเรื่องทุจริต |
+| `AddStaffAuthVersion` | เพิ่ม version ของ session เพื่อยกเลิก cookie เดิมทันทีเมื่อบัญชี/สิทธิ์เปลี่ยน |
+| `AddNotificationDeliveryLog` | เพิ่มประวัติผลส่ง Email/SMS แบบปิดบังข้อมูลผู้รับ |
+| `AddSlaWarningTracking` | ป้องกันการส่งเตือน SLA ซ้ำและใช้ค่า WarningThresholdPercent จริง |
+| `Corruption/AddCorruptionAttachments` | เพิ่มที่เก็บ metadata ไฟล์หลักฐานของเรื่องทุจริต |
 
 ---
 
@@ -1033,6 +1091,8 @@ dotnet ef database update PreviousMigrationName \
 | `GeneralOfficer` | จัดการเรื่องร้องเรียนทั่วไปที่รับผิดชอบ |
 | `CorruptionOfficer` | จัดการเรื่องทุจริต (แยกสมบูรณ์จากทั่วไป) |
 | `SuperAdmin` | สิทธิ์ทั้งหมด + จัดการผู้ใช้งาน, ตั้งค่าระบบ, API Keys |
+
+หน้าเรื่องร้องเรียนทั่วไปใช้ policy `GeneralComplaintAccess` (`GeneralOfficer`, `SuperAdmin`) และหน้าทุจริตใช้ `CorruptionAccess` (`CorruptionOfficer`, `SuperAdmin`) การเข้าผ่าน URL ตรงที่ไม่ตรงกับบทบาทจะถูกส่งไปหน้า Access Denied
 
 ---
 

@@ -22,7 +22,7 @@ public class LoginModel(AppDbContext db, ITurnstileService turnstile, IConfigura
     public IActionResult OnGet(string? returnUrl = null)
     {
         if (User.Identity?.IsAuthenticated == true)
-            return RedirectToPage("/Staff/Dashboard");
+            return RedirectToRoleHome(User.FindFirstValue(ClaimTypes.Role));
 
         ViewData["ReturnUrl"] = returnUrl;
         return Page();
@@ -68,6 +68,7 @@ public class LoginModel(AppDbContext db, ITurnstileService turnstile, IConfigura
             new(ClaimTypes.NameIdentifier, staff.Id.ToString()),
             new(ClaimTypes.Name, staff.EmployeeCode),
             new(ClaimTypes.Role, staff.Role),
+            new("AuthVersion", staff.AuthVersion.ToString()),
             new("FullName", staff.FullName),
             new("EmployeeCode", staff.EmployeeCode)
         };
@@ -91,8 +92,15 @@ public class LoginModel(AppDbContext db, ITurnstileService turnstile, IConfigura
         if (!string.IsNullOrEmpty(returnUrl) && Url.IsLocalUrl(returnUrl))
             return Redirect(returnUrl);
 
-        return RedirectToPage("/Staff/Dashboard");
+        return RedirectToRoleHome(staff.Role);
     }
+
+    private IActionResult RedirectToRoleHome(string? role) => role switch
+    {
+        "CorruptionOfficer" => RedirectToPage("/Corruption/Dashboard"),
+        "SuperAdmin" => RedirectToPage("/Admin/Dashboard"),
+        _ => RedirectToPage("/Staff/Dashboard")
+    };
 }
 
 public class LoginInputModel

@@ -1,3 +1,6 @@
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc;
@@ -6,10 +9,36 @@ using Microsoft.Extensions.Options;
 using Serilog;
 using SRT.Complaint.Data;
 using SRT.Complaint.Filters;
+using SRT.Complaint.Middleware;
 using SRT.Complaint.OpenApi;
 using SRT.Complaint.Services;
+using StackExchange.Redis;
 using System.Net;
+using System.Security.Cryptography.X509Certificates;
 using System.Threading.RateLimiting;
+
+static X509Certificate2 LoadDataProtectionCertificate(DataProtectionRuntimeOptions options)
+{
+    if (!Enum.TryParse<StoreLocation>(options.CertificateStoreLocation, true, out var location))
+        throw new InvalidOperationException("DataProtection:CertificateStoreLocation must be CurrentUser or LocalMachine");
+
+    using var store = new X509Store(StoreName.My, location);
+    store.Open(OpenFlags.ReadOnly);
+    var thumbprint = options.CertificateThumbprint.Replace(" ", "", StringComparison.Ordinal);
+    var certificate = store.Certificates
+        .Find(X509FindType.FindByThumbprint, thumbprint, validOnly: false)
+        .OfType<X509Certificate2>()
+        .Where(x => x.HasPrivateKey)
+        .OrderByDescending(x => x.NotAfter)
+        .FirstOrDefault();
+    if (certificate == null)
+        throw new InvalidOperationException(
+            $"Data Protection certificate {thumbprint} with a private key was not found in {location}/My");
+    if (DateTime.Now < certificate.NotBefore || DateTime.Now > certificate.NotAfter)
+        throw new InvalidOperationException(
+            $"Data Protection certificate {thumbprint} is outside its validity period");
+    return certificate;
+}
 
 Log.Logger = new LoggerConfiguration()
     .WriteTo.Console()
@@ -19,6 +48,9 @@ Log.Logger = new LoggerConfiguration()
 try
 {
     var builder = WebApplication.CreateBuilder(args);
+    var secureCookiePolicy = builder.Environment.IsDevelopment()
+        ? CookieSecurePolicy.SameAsRequest
+        : CookieSecurePolicy.Always;
 
     builder.Host.UseSerilog((ctx, services, config) =>
         config.ReadFrom.Configuration(ctx.Configuration)
@@ -32,6 +64,25 @@ try
     builder.Services.AddDbContext<CorruptionDbContext>(options =>
         options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
+    var dataProtectionOptions = builder.Configuration
+        .GetSection(DataProtectionRuntimeOptions.SectionName)
+        .Get<DataProtectionRuntimeOptions>() ?? new DataProtectionRuntimeOptions();
+    if (string.IsNullOrWhiteSpace(dataProtectionOptions.ApplicationName))
+    {
+        if (!builder.Environment.IsDevelopment())
+            throw new InvalidOperationException("DataProtection:ApplicationName is required outside Development");
+        dataProtectionOptions.ApplicationName = "SRT.Complaint.Development";
+    }
+
+    var dataProtection = builder.Services.AddDataProtection()
+        .SetApplicationName(dataProtectionOptions.ApplicationName)
+        .PersistKeysToDbContext<AppDbContext>();
+    if (!string.IsNullOrWhiteSpace(dataProtectionOptions.CertificateThumbprint))
+        dataProtection.ProtectKeysWithCertificate(LoadDataProtectionCertificate(dataProtectionOptions));
+    else if (builder.Environment.IsProduction())
+        throw new InvalidOperationException(
+            "DataProtection:CertificateThumbprint is required in Production to protect the shared key ring at rest");
+
     // ──────────── Authentication & Authorization ────────────
     builder.Services.AddAuthentication(options =>
     {
@@ -44,11 +95,40 @@ try
         options.LoginPath = "/Staff/Login";
         options.LogoutPath = "/Staff/Logout";
         options.AccessDeniedPath = "/Staff/AccessDenied";
+        options.Cookie.Name = "SRT.StaffAuth";
         options.Cookie.HttpOnly = true;
-        options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+        options.Cookie.IsEssential = true;
+        options.Cookie.SecurePolicy = secureCookiePolicy;
         options.Cookie.SameSite = SameSiteMode.Strict;
         options.ExpireTimeSpan = TimeSpan.FromHours(1);
         options.SlidingExpiration = true;
+        options.Events = new CookieAuthenticationEvents
+        {
+            OnValidatePrincipal = async context =>
+            {
+                var userIdValue = context.Principal?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                var authVersionValue = context.Principal?.FindFirst("AuthVersion")?.Value;
+                if (!int.TryParse(userIdValue, out var userId) ||
+                    !int.TryParse(authVersionValue, out var authVersion))
+                {
+                    context.RejectPrincipal();
+                    await context.HttpContext.SignOutAsync("Cookies");
+                    return;
+                }
+
+                var db = context.HttpContext.RequestServices.GetRequiredService<AppDbContext>();
+                var staff = await db.StaffUsers.AsNoTracking()
+                    .Where(x => x.Id == userId)
+                    .Select(x => new { x.IsActive, x.Role, x.AuthVersion })
+                    .SingleOrDefaultAsync(context.HttpContext.RequestAborted);
+                var cookieRole = context.Principal?.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
+                if (staff is null || !staff.IsActive || staff.AuthVersion != authVersion || staff.Role != cookieRole)
+                {
+                    context.RejectPrincipal();
+                    await context.HttpContext.SignOutAsync("Cookies");
+                }
+            }
+        };
     });
 
     builder.Services.AddAuthorization(options =>
@@ -56,8 +136,32 @@ try
         options.AddPolicy("GeneralOfficer", policy => policy.RequireRole("GeneralOfficer"));
         options.AddPolicy("CorruptionOfficer", policy => policy.RequireRole("CorruptionOfficer"));
         options.AddPolicy("StaffOnly", policy => policy.RequireRole("GeneralOfficer", "CorruptionOfficer", "SuperAdmin"));
+        options.AddPolicy("GeneralComplaintAccess", policy => policy.RequireRole("GeneralOfficer", "SuperAdmin"));
         options.AddPolicy("CorruptionAccess", policy => policy.RequireRole("CorruptionOfficer", "SuperAdmin"));
         options.AddPolicy("SuperAdmin", policy => policy.RequireRole("SuperAdmin"));
+    });
+
+    builder.Services.Configure<CookiePolicyOptions>(options =>
+    {
+        // Optional cookies are denied until an explicit consent mechanism grants them.
+        // The application currently uses essential cookies only.
+        options.CheckConsentNeeded = _ => true;
+        options.MinimumSameSitePolicy = SameSiteMode.Lax;
+        options.Secure = secureCookiePolicy;
+        options.ConsentCookie.Name = "SRT.OptionalCookieConsent";
+        options.ConsentCookie.HttpOnly = true;
+        options.ConsentCookie.IsEssential = true;
+        options.ConsentCookie.SameSite = SameSiteMode.Lax;
+        options.ConsentCookie.SecurePolicy = secureCookiePolicy;
+        options.ConsentCookie.MaxAge = TimeSpan.FromDays(180);
+    });
+    builder.Services.AddAntiforgery(options =>
+    {
+        options.Cookie.Name = "SRT.Antiforgery";
+        options.Cookie.HttpOnly = true;
+        options.Cookie.IsEssential = true;
+        options.Cookie.SameSite = SameSiteMode.Strict;
+        options.Cookie.SecurePolicy = secureCookiePolicy;
     });
 
     // Trust forwarded client/protocol headers only from explicitly configured proxies.
@@ -108,15 +212,55 @@ try
     });
 
     // ──────────── Memory Cache (for API rate limiting) ────────────
+    var distributedRuntime = builder.Configuration
+        .GetSection(DistributedRuntimeOptions.SectionName)
+        .Get<DistributedRuntimeOptions>() ?? new DistributedRuntimeOptions();
+    var validRuntimeModes = new[] { "SingleInstance", "MultiInstance" };
+    var validRateLimitProviders = new[] { "Local", "Redis", "Gateway" };
+    if (!validRuntimeModes.Contains(distributedRuntime.Mode, StringComparer.OrdinalIgnoreCase))
+        throw new InvalidOperationException("DistributedRuntime:Mode must be SingleInstance or MultiInstance");
+    if (!validRateLimitProviders.Contains(distributedRuntime.RateLimitProvider, StringComparer.OrdinalIgnoreCase))
+        throw new InvalidOperationException("DistributedRuntime:RateLimitProvider must be Local, Redis, or Gateway");
+    if (distributedRuntime.UsesRedisRateLimit && string.IsNullOrWhiteSpace(distributedRuntime.RedisConnection))
+        throw new InvalidOperationException("DistributedRuntime:RedisConnection is required for Redis rate limiting");
+    if (distributedRuntime.IsMultiInstance && string.IsNullOrWhiteSpace(distributedRuntime.RedisConnection))
+        throw new InvalidOperationException("DistributedRuntime:RedisConnection is required for shared session state in MultiInstance mode");
+    if (distributedRuntime.IsMultiInstance &&
+        !distributedRuntime.UsesRedisRateLimit &&
+        !distributedRuntime.UsesGatewayRateLimit)
+        throw new InvalidOperationException("MultiInstance mode requires Redis or Gateway rate limiting");
+
+    builder.Services.AddOptions<DistributedRuntimeOptions>()
+        .Bind(builder.Configuration.GetSection(DistributedRuntimeOptions.SectionName))
+        .Validate(x => x.EmergencyReadLimitPerMin is >= 1 and <= 3600,
+            "DistributedRuntime:EmergencyReadLimitPerMin must be between 1 and 3600")
+        .ValidateOnStart();
+
     builder.Services.AddMemoryCache();
-    builder.Services.AddDistributedMemoryCache();
+    if (!string.IsNullOrWhiteSpace(distributedRuntime.RedisConnection))
+    {
+        var redisConfiguration = ConfigurationOptions.Parse(distributedRuntime.RedisConnection);
+        redisConfiguration.AbortOnConnectFail = false;
+        redisConfiguration.ClientName = $"SRT.Complaint.{builder.Environment.EnvironmentName}";
+        builder.Services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisConfiguration));
+        builder.Services.AddStackExchangeRedisCache(options =>
+        {
+            options.Configuration = distributedRuntime.RedisConnection;
+            options.InstanceName = $"{distributedRuntime.RedisInstanceName}cache:";
+        });
+    }
+    else
+    {
+        builder.Services.AddDistributedMemoryCache();
+    }
     builder.Services.AddSession(options =>
     {
         options.IdleTimeout = TimeSpan.FromMinutes(30);
+        options.Cookie.Name = "SRT.Session";
         options.Cookie.HttpOnly = true;
         options.Cookie.IsEssential = true;
         options.Cookie.SameSite = SameSiteMode.Strict;
-        options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+        options.Cookie.SecurePolicy = secureCookiePolicy;
     });
 
     // ──────────── Services ────────────
@@ -149,6 +293,11 @@ try
     builder.Services.AddScoped<IStaffDirectoryService, StaffDirectoryService>();
     builder.Services.AddScoped<IDiscordNotifier, DiscordNotifier>();
     builder.Services.AddSingleton<IExternalSystemAdapter, SRT.Complaint.Services.Adapters.DamrongdhammaAdapter>();
+    builder.Services.AddSingleton<ApiRateLimitStore>();
+    if (distributedRuntime.UsesRedisRateLimit)
+        builder.Services.AddSingleton<IApiRateLimitStore, RedisApiRateLimitStore>();
+    else
+        builder.Services.AddSingleton<IApiRateLimitStore>(sp => sp.GetRequiredService<ApiRateLimitStore>());
     builder.Services.AddScoped<ApiKeyAuthFilter>();
 
     // ──────────── Background Services ────────────
@@ -161,6 +310,7 @@ try
     builder.Services.AddControllers()
         .ConfigureApiBehaviorOptions(options =>
         {
+            options.SuppressMapClientErrors = true;
             options.InvalidModelStateResponseFactory = context =>
             {
                 var details = context.ModelState
@@ -262,9 +412,31 @@ try
         app.UseDeveloperExceptionPage();
     }
 
+    app.UseMiddleware<ApiExceptionMiddleware>();
+    app.UseStatusCodePages(async statusContext =>
+    {
+        var http = statusContext.HttpContext;
+        if (!http.Request.Path.StartsWithSegments("/api"))
+            return;
+
+        var (code, message) = http.Response.StatusCode switch
+        {
+            StatusCodes.Status404NotFound => ("not_found", "API endpoint not found"),
+            StatusCodes.Status405MethodNotAllowed => ("method_not_allowed", "HTTP method not allowed"),
+            StatusCodes.Status415UnsupportedMediaType => ("unsupported_media_type", "Content-Type must be application/json"),
+            _ => ("request_failed", "Request failed")
+        };
+        http.Response.ContentType = "application/json; charset=utf-8";
+        await http.Response.WriteAsJsonAsync(new
+        {
+            error = new { code, message, traceId = http.TraceIdentifier }
+        });
+    });
+
     app.UseForwardedHeaders();
     app.UseSerilogRequestLogging();
     app.UseHttpsRedirection();
+    app.UseCookiePolicy();
     app.Use(async (context, next) =>
     {
         context.Response.OnStarting(() =>

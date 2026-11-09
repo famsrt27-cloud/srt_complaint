@@ -6,6 +6,9 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using SRT.Complaint.Models;
 using SRT.Complaint.Models.Corruption;
 using SRT.Complaint.Services;
+using SRT.Complaint.Data;
+using SRT.Complaint.Validation;
+using Microsoft.EntityFrameworkCore;
 
 namespace SRT.Complaint.Pages.Corruption;
 
@@ -13,7 +16,10 @@ namespace SRT.Complaint.Pages.Corruption;
 public class CaseDetailModel(
     ICorruptionService corruptionService,
     IPdfExportService pdfExportService,
-    IStaffDirectoryService staffDirectory) : PageModel
+    IStaffDirectoryService staffDirectory,
+    CorruptionDbContext db,
+    IConfiguration config,
+    IAuditService auditService) : PageModel
 {
     // Action bindings
     [BindProperty] public string?  InvLogContent        { get; set; }
@@ -67,16 +73,24 @@ public class CaseDetailModel(
             TempData["Error"] = "กรุณาเลือกสถานะ";
             return RedirectToPage(new { id });
         }
-        await corruptionService.UpdateStatusAsync(id, NewStatus, GetStaffId(), null);
-        TempData["Success"] = $"อัปเดตสถานะเป็น \"{StatusLabel(NewStatus)}\" เรียบร้อย";
+        try
+        {
+            await corruptionService.UpdateStatusAsync(id, NewStatus, GetStaffId(), null);
+            TempData["Success"] = $"อัปเดตสถานะเป็น {StatusLabel(NewStatus)} เรียบร้อย";
+        }
+        catch (InvalidOperationException ex) { TempData["Error"] = ex.Message; }
         return RedirectToPage(new { id });
     }
 
     // ─── Send Back to Investigation ───
     public async Task<IActionResult> OnPostSendBackAsync(int id)
     {
-        await corruptionService.UpdateStatusAsync(id, "InProgress", GetStaffId(), "ส่งกลับสืบสวนเพิ่มเติม");
-        TempData["Success"] = "ส่งกลับสืบสวนเรียบร้อยแล้ว";
+        try
+        {
+            await corruptionService.UpdateStatusAsync(id, "InProgress", GetStaffId(), "ส่งกลับสืบสวนเพิ่มเติม");
+            TempData["Success"] = "ส่งกลับสืบสวนเรียบร้อยแล้ว";
+        }
+        catch (InvalidOperationException ex) { TempData["Error"] = ex.Message; }
         return RedirectToPage(new { id });
     }
 
@@ -103,8 +117,12 @@ public class CaseDetailModel(
     // ─── Reopen ───
     public async Task<IActionResult> OnPostReopenAsync(int id)
     {
-        await corruptionService.ReopenAsync(id, GetStaffId());
-        TempData["Success"] = "เปิดเรื่องใหม่เรียบร้อย กลับสู่การสืบสวนอีกครั้ง";
+        try
+        {
+            await corruptionService.ReopenAsync(id, GetStaffId());
+            TempData["Success"] = "เปิดเรื่องใหม่และส่งกลับเข้าสู่การสืบสวนแล้ว";
+        }
+        catch (InvalidOperationException ex) { TempData["Error"] = ex.Message; }
         return RedirectToPage(new { id });
     }
 
@@ -134,7 +152,30 @@ public class CaseDetailModel(
 
         var officerName = User.FindFirstValue("FullName") ?? User.FindFirstValue(ClaimTypes.Name);
         var pdf = pdfExportService.GenerateCorruptionReportPdf(report, officerName);
+        await auditService.LogAsync("ExportCorruptionPdf", GetStaffId(),
+            User.FindFirstValue("EmployeeCode"), "CorruptionReport", report.Id.ToString(),
+            new { report.ReferenceNumber, containsSensitiveData = true },
+            HttpContext.Connection.RemoteIpAddress?.ToString());
         return File(pdf, "application/pdf", $"corruption-{report.ReferenceNumber}.pdf");
+    }
+
+    public async Task<IActionResult> OnGetAttachmentAsync(int id, int attachmentId)
+    {
+        var attachment = await db.Attachments.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == attachmentId && x.ReportId == id);
+        if (attachment == null) return NotFound();
+
+        var storageRoot = config["FileUpload:StoragePath"] ?? Path.GetTempPath();
+        var fullPath = FileStorage.ResolveWithinRoot(storageRoot, attachment.StoredPath);
+        if (fullPath == null || !System.IO.File.Exists(fullPath)) return NotFound();
+
+        await auditService.LogAsync("DownloadCorruptionAttachment", GetStaffId(),
+            User.FindFirstValue("EmployeeCode"), "CorruptionReport", id.ToString(),
+            new { attachment.Id, attachment.FileName },
+            HttpContext.Connection.RemoteIpAddress?.ToString());
+
+        return File(System.IO.File.OpenRead(fullPath),
+            attachment.MimeType ?? "application/octet-stream", attachment.FileName);
     }
 
     // ─── Helpers ───

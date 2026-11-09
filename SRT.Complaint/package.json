@@ -3,12 +3,19 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "build:css": "tailwindcss -i ./wwwroot/css/app.css -o ./wwwroot/css/site.css --minify",
-    "watch:css": "tailwindcss -i ./wwwroot/css/app.css -o ./wwwroot/css/site.css --watch"
+    "build": "npm run build:vendor && npm run build:css",
+    "build:vendor": "node -e \"const fs=require('fs'); fs.mkdirSync('./wwwroot/lib/flowbite',{recursive:true}); fs.mkdirSync('./wwwroot/lib/sweetalert2',{recursive:true}); fs.copyFileSync('./node_modules/flowbite/dist/flowbite.min.js','./wwwroot/lib/flowbite/flowbite.min.js'); fs.copyFileSync('./node_modules/flowbite/LICENSE.md','./wwwroot/lib/flowbite/LICENSE.md'); fs.copyFileSync('./node_modules/sweetalert2/dist/sweetalert2.all.min.js','./wwwroot/lib/sweetalert2/sweetalert2.all.min.js'); fs.copyFileSync('./node_modules/sweetalert2/dist/sweetalert2.min.css','./wwwroot/lib/sweetalert2/sweetalert2.min.css'); fs.copyFileSync('./node_modules/sweetalert2/LICENSE','./wwwroot/lib/sweetalert2/LICENSE')\"",
+    "build:css": "npx @tailwindcss/cli -i ./wwwroot/css/app.css -o ./wwwroot/css/site.css --minify",
+    "watch:css": "npx @tailwindcss/cli -i ./wwwroot/css/app.css -o ./wwwroot/css/site.css --watch"
   },
   "devDependencies": {
-    "@tailwindcss/forms": "^0.5.9",
+    "@tailwindcss/cli": "4.3.0",
+    "@tailwindcss/forms": "0.5.11",
     "htmx.org": "^2.0.10",
-    "tailwindcss": "^3.4.0"
+    "tailwindcss": "4.3.0"
+  },
+  "dependencies": {
+    "flowbite": "4.0.1",
+    "sweetalert2": "11.26.25"
   }
 }

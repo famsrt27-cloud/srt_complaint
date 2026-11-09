@@ -27,7 +27,7 @@ public class ComplaintsController(
     [HttpGet(Name = "ListComplaintsV1")]
     [RequireScope("complaints:read")]
     public async Task<IActionResult> ListComplaints(
-        [FromQuery] DateTime? updatedSince,
+        [FromQuery] DateTimeOffset? updatedSince,
         [FromQuery] string? status,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20,
@@ -41,7 +41,7 @@ public class ComplaintsController(
         var key = CurrentApiKey;
         var query = db.Complaints.AsNoTracking().Include(x => x.Category).AsQueryable();
         if (key.DataAccessMode != "All") query = query.Where(x => x.SourcePartnerId == key.PartnerId);
-        if (updatedSince.HasValue) query = query.Where(x => x.UpdatedAt >= updatedSince.Value.ToUniversalTime());
+        if (updatedSince.HasValue) query = query.Where(x => x.UpdatedAt >= updatedSince.Value.UtcDateTime);
         if (!string.IsNullOrWhiteSpace(status)) query = query.Where(x => x.Status == status);
 
         var total = await query.CountAsync(ct);
@@ -52,6 +52,9 @@ public class ComplaintsController(
                 x.ReferenceNumber,
                 externalReference = x.ExternalId,
                 x.Status,
+                x.WorkflowStep,
+                workflowStepTh = ComplaintWorkflowSteps.ThaiLabel(x.WorkflowStep),
+                x.WorkflowUpdatedAt,
                 x.Priority,
                 category = x.Category.Name,
                 x.SubjectStation,
@@ -64,7 +67,9 @@ public class ComplaintsController(
 
     [HttpGet("by-external-reference/{externalReference}", Name = "GetComplaintByExternalReferenceV1")]
     [RequireScope("complaints:read")]
-    public async Task<IActionResult> GetByExternalReference(string externalReference, CancellationToken ct)
+    public async Task<IActionResult> GetByExternalReference(
+        [FromRoute, StringLength(100, MinimumLength = 1)] string externalReference,
+        CancellationToken ct)
     {
         var key = CurrentApiKey;
         var query = db.Complaints.AsNoTracking()
@@ -72,16 +77,19 @@ public class ComplaintsController(
             .Where(x => x.ExternalId == externalReference);
         if (key.DataAccessMode != "All") query = query.Where(x => x.SourcePartnerId == key.PartnerId);
         var complaint = await query.FirstOrDefaultAsync(ct);
-        return complaint == null
-            ? NotFound(ApiError("not_found", "Complaint not found"))
-            : Ok(ToReadDto(complaint));
+        if (complaint == null)
+            return NotFound(ApiError("not_found", "Complaint not found"));
+        SetVersionHeader(complaint.RowVersion);
+        return Ok(ToReadDto(complaint));
     }
 
     [HttpGet("{referenceNumber}", Name = "GetComplaintV1")]
     [RequireScope("complaints:read")]
     [ProducesResponseType<ComplaintReadDto>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> GetComplaint(string referenceNumber, CancellationToken ct)
+    public async Task<IActionResult> GetComplaint(
+        [FromRoute, StringLength(20, MinimumLength = 1)] string referenceNumber,
+        CancellationToken ct)
     {
         try
         {
@@ -89,6 +97,7 @@ public class ComplaintsController(
             if (complaint == null || !CanAccess(complaint, CurrentApiKey))
                 return NotFound(ApiError("not_found", "Complaint not found"));
 
+            SetVersionHeader(complaint.RowVersion);
             return Ok(ToReadDto(complaint));
         }
         catch (Exception ex)
@@ -105,6 +114,7 @@ public class ComplaintsController(
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    [Consumes("application/json")]
     public async Task<IActionResult> CreateComplaint(
         [FromBody] ComplaintCreateDto dto,
         [FromHeader(Name = "Idempotency-Key")] string? idempotencyKey,
@@ -113,6 +123,14 @@ public class ComplaintsController(
         var normalizedIdempotencyKey = idempotencyKey?.Trim();
         if (string.IsNullOrWhiteSpace(normalizedIdempotencyKey) || normalizedIdempotencyKey.Length is < 8 or > 128)
             return BadRequest(ApiError("invalid_idempotency_key", "Idempotency-Key header is required and must contain 8-128 characters"));
+
+        var categoryExists = await db.ComplaintCategories.AsNoTracking()
+            .AnyAsync(x => x.Id == dto.CategoryId && x.IsActive, ct);
+        if (!categoryExists)
+            return UnprocessableEntity(ApiError("invalid_category", "categoryId must reference an active category"));
+        if (dto.SubCategoryId.HasValue && !await db.ComplaintSubCategories.AsNoTracking().AnyAsync(
+                x => x.Id == dto.SubCategoryId.Value && x.CategoryId == dto.CategoryId && x.IsActive, ct))
+            return UnprocessableEntity(ApiError("invalid_subcategory", "subCategoryId must belong to categoryId and be active"));
 
         var apiKey = CurrentApiKey;
         var requestHash = Convert.ToHexString(SHA256.HashData(
@@ -166,7 +184,7 @@ public class ComplaintsController(
             var complaint = await complaintService.SubmitAsync(request, ct);
             var response = new ComplaintCreatedDto(
                 complaint.ReferenceNumber,
-                dto.ExternalReference,
+                externalReference,
                 complaint.Status,
                 complaint.SlaDeadline,
                 Url.RouteUrl("GetComplaintV1", new { referenceNumber = complaint.ReferenceNumber }),
@@ -203,44 +221,98 @@ public class ComplaintsController(
 
     [HttpGet("{referenceNumber}/status", Name = "GetComplaintStatusV1")]
     [RequireScope("complaints:status")]
-    public async Task<IActionResult> GetComplaintStatus(string referenceNumber, CancellationToken ct)
+    public async Task<IActionResult> GetComplaintStatus(
+        [FromRoute, StringLength(20, MinimumLength = 1)] string referenceNumber,
+        CancellationToken ct)
     {
         var complaint = await complaintService.GetByReferenceAsync(referenceNumber, ct);
         if (complaint == null || !CanAccess(complaint, CurrentApiKey))
             return NotFound(ApiError("not_found", "Complaint not found"));
 
+        SetVersionHeader(complaint.RowVersion);
         return Ok(new
         {
             referenceNumber = complaint.ReferenceNumber,
             externalReference = complaint.ExternalId,
             status = complaint.Status,
             statusTh = StatusLabel(complaint.Status),
+            workflowStep = complaint.WorkflowStep,
+            workflowStepTh = ComplaintWorkflowSteps.ThaiLabel(complaint.WorkflowStep),
+            workflowUpdatedAt = complaint.WorkflowUpdatedAt,
             updatedAt = complaint.UpdatedAt,
             closedAt = complaint.ClosedAt,
-            slaBreached = complaint.SlaBreached
+            slaBreached = complaint.SlaBreached,
+            version = Convert.ToBase64String(complaint.RowVersion)
         });
     }
 
     [HttpPut("{referenceNumber}/status", Name = "UpdateComplaintStatusV1")]
     [RequireScope("complaints:update")]
     [RequestSizeLimit(64 * 1024)]
+    [Consumes("application/json")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status412PreconditionFailed)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(StatusCodes.Status428PreconditionRequired)]
     public async Task<IActionResult> UpdateComplaintStatus(
-        string referenceNumber, [FromBody] UpdateStatusDto dto, CancellationToken ct)
+        [FromRoute, StringLength(20, MinimumLength = 1)] string referenceNumber,
+        [FromBody] UpdateStatusDto dto,
+        [FromHeader(Name = "If-Match")] string? ifMatch,
+        CancellationToken ct)
     {
         if (!ApiIntegrationPolicy.AllowedComplaintStatuses.Contains(dto.NewStatus))
             return UnprocessableEntity(ApiError("invalid_status", "Unknown complaint status"));
+        if (!CurrentApiKey.KeyType.Equals("Internal", StringComparison.Ordinal))
+            return StatusCode(StatusCodes.Status403Forbidden,
+                ApiError("external_status_update_disabled", "External API keys cannot control the internal complaint workflow"));
+        if (!TryParseVersion(ifMatch, out var expectedVersion))
+            return StatusCode(StatusCodes.Status428PreconditionRequired,
+                ApiError("if_match_required", "If-Match must contain the version returned by the latest complaint response"));
 
         var complaint = await complaintService.GetByReferenceAsync(referenceNumber, ct);
         if (complaint == null || !CanAccess(complaint, CurrentApiKey))
             return NotFound(ApiError("not_found", "Complaint not found"));
+        if (!CryptographicOperations.FixedTimeEquals(expectedVersion, complaint.RowVersion))
+            return StatusCode(StatusCodes.Status412PreconditionFailed,
+                ApiError("version_mismatch", "Complaint was changed after it was read; retrieve it again before updating"));
 
-        await complaintService.UpdateStatusAsync(complaint.Id, dto.NewStatus, CurrentApiKey.CreatedById, dto.Note, ct);
-        return Ok(new { referenceNumber, newStatus = dto.NewStatus, message = "อัปเดตสถานะเรียบร้อยแล้ว" });
+        try
+        {
+            await complaintService.UpdateStatusFromApiAsync(
+                complaint.Id,
+                dto.NewStatus,
+                CurrentApiKey,
+                dto.Note,
+                HttpContext.Connection.RemoteIpAddress?.ToString(),
+                ct);
+            SetVersionHeader(complaint.RowVersion);
+            return Ok(new
+            {
+                referenceNumber,
+                newStatus = complaint.Status,
+                workflowStep = complaint.WorkflowStep,
+                version = Convert.ToBase64String(complaint.RowVersion),
+                message = "อัปเดตสถานะเรียบร้อยแล้ว"
+            });
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Conflict(ApiError("concurrency_conflict", "Complaint was modified by another request; retrieve it again before updating"));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(ApiError("invalid_transition", ex.Message));
+        }
     }
 
     [HttpGet("{referenceNumber}/edoc-payload", Name = "GetComplaintEdocPayloadV1")]
     [RequireScope("complaints:edoc")]
-    public async Task<IActionResult> GetEdocPayload(string referenceNumber, CancellationToken ct)
+    public async Task<IActionResult> GetEdocPayload(
+        [FromRoute, StringLength(20, MinimumLength = 1)] string referenceNumber,
+        CancellationToken ct)
     {
         var complaint = await complaintService.GetByReferenceAsync(referenceNumber, ct);
         if (complaint == null || !CanAccess(complaint, CurrentApiKey))
@@ -268,15 +340,43 @@ public class ComplaintsController(
     private static bool CanAccess(Models.Complaint complaint, ApiKey key) =>
         key.DataAccessMode == "All" || complaint.SourcePartnerId == key.PartnerId;
 
-    private static object ApiError(string code, string message) => new { error = new { code, message } };
+    private void SetVersionHeader(byte[] rowVersion) =>
+        Response.Headers.ETag = $"\"{Convert.ToBase64String(rowVersion)}\"";
+
+    private static bool TryParseVersion(string? ifMatch, out byte[] version)
+    {
+        version = [];
+        if (string.IsNullOrWhiteSpace(ifMatch)) return false;
+        var value = ifMatch.Trim();
+        if (value.StartsWith("W/", StringComparison.OrdinalIgnoreCase))
+            value = value[2..].Trim();
+        value = value.Trim('"');
+        if (value.Length == 0 || value == "*") return false;
+        try
+        {
+            version = Convert.FromBase64String(value);
+            return version.Length > 0;
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
+    }
+
+    private object ApiError(string code, string message) => new
+    {
+        error = new { code, message, traceId = HttpContext.TraceIdentifier }
+    };
 
     private static ComplaintReadDto ToReadDto(Models.Complaint complaint) => new(
         complaint.ReferenceNumber, complaint.ExternalId, complaint.Status, StatusLabel(complaint.Status),
+        complaint.WorkflowStep, ComplaintWorkflowSteps.ThaiLabel(complaint.WorkflowStep), complaint.WorkflowUpdatedAt,
         complaint.Priority, PriorityLabel(complaint.Priority), complaint.Category?.Name ?? "",
         complaint.Category?.DepartmentName, complaint.ReporterName, complaint.ReporterPhone,
         complaint.ReporterEmail, complaint.SubjectStation, complaint.IncidentDate?.ToString("yyyy-MM-dd"),
         complaint.Description, complaint.AssignedTo?.FullName, complaint.SlaDeadline, complaint.SlaBreached,
-        complaint.CreatedAt, complaint.UpdatedAt, complaint.ClosedAt, complaint.SatisfactionScore);
+        complaint.CreatedAt, complaint.UpdatedAt, complaint.ClosedAt, complaint.SatisfactionScore,
+        Convert.ToBase64String(complaint.RowVersion));
 
     private static readonly JsonSerializerOptions ApiJsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -308,6 +408,9 @@ public record ComplaintReadDto(
     string? ExternalReference,
     string Status,
     string StatusTh,
+    string WorkflowStep,
+    string WorkflowStepTh,
+    DateTime WorkflowUpdatedAt,
     string Priority,
     string PriorityTh,
     string Category,
@@ -324,7 +427,8 @@ public record ComplaintReadDto(
     DateTime CreatedAt,
     DateTime UpdatedAt,
     DateTime? ClosedAt,
-    byte? SatisfactionScore);
+    byte? SatisfactionScore,
+    string Version);
 
 public record ComplaintCreateDto(
     [property: Required, MaxLength(100)] string? ExternalReference,

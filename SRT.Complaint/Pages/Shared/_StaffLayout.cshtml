@@ -9,12 +9,6 @@
     var currentPath = ViewContext.HttpContext.Request.Path.Value ?? "";
     bool IsActive(string prefix) => currentPath.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
 
-    // Avatar initials
-    var initials = string.Join("", userName.Split(' ', StringSplitOptions.RemoveEmptyEntries)
-                                           .Take(2)
-                                           .Select(w => w[0].ToString()));
-    if (initials.Length == 0) initials = "รฟ";
-
     var notificationBell = await SRT.Complaint.Pages.Staff.NotificationBadgeModel.BuildAsync(
         User, ComplaintServiceForBell, CorruptionServiceForBell);
 }
@@ -27,13 +21,14 @@
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
-    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/lib/sweetalert2/sweetalert2.min.css" asp-append-version="true" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css" />
 
     @await RenderSectionAsync("Head", required: false)
 </head>
-<body class="h-screen flex overflow-hidden bg-slate-50 font-thai antialiased">
+<body class="staff-shell flowbite-shell h-screen flex overflow-hidden bg-slate-50 font-thai antialiased">
 
     <!-- Skip navigation — WCAG 2.4.1 -->
     <a href="#main-content"
@@ -45,32 +40,45 @@
 
     <!-- ═══ SIDEBAR ═══ -->
     <aside id="sidebar"
-           class="w-[240px] bg-gradient-sidebar flex flex-col shrink-0 shadow-2xl
-                  fixed inset-y-0 left-0 z-50 transition-transform duration-300
-                  md:static md:translate-x-0 scrollbar-thin"
-           aria-label="เมนูระบบ">
+           class="w-[240px] max-w-[calc(100vw-3rem)] bg-white flex flex-col shrink-0 border-r border-slate-200
+                  fixed inset-y-0 left-0 z-50 -translate-x-full transition-transform duration-300
+                  motion-reduce:transition-none lg:static lg:translate-x-0 scrollbar-thin"
+           aria-label="เมนูระบบ"
+           aria-hidden="true"
+           inert>
 
         <!-- Logo -->
-        <div class="flex items-center gap-2 px-4 h-16 border-b border-white/10 shrink-0">
+        <div class="flex items-center gap-2 px-4 h-16 border-b border-slate-200 shrink-0">
             <img src="~/images/srt-logo.png"
                  alt="การรถไฟแห่งประเทศไทย"
-                 class="h-10 w-auto object-contain shrink-0"
-                 style="filter: brightness(0) invert(1);" />
-            <div class="text-slate-400 text-[14px] leading-tight min-w-0">
+                 class="h-10 w-auto object-contain shrink-0" />
+            <div class="text-slate-600 text-[14px] leading-tight min-w-0">
                 <div>ระบบจัดการ</div>
                 <div>เรื่องร้องเรียน</div>
             </div>
+            <button type="button"
+                    id="sidebar-close"
+                    onclick="setSidebarOpen(false, true)"
+                    class="ml-auto inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-srt-navy lg:hidden"
+                    aria-controls="sidebar"
+                    aria-label="ปิดเมนูระบบ">
+                <svg class="h-5 w-5" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18 18 6M6 6l12 12" />
+                </svg>
+            </button>
         </div>
 
         <!-- User info -->
-        <div class="px-4 py-4 border-b border-white/10 shrink-0">
+        <div class="px-4 py-4 border-b border-slate-200 shrink-0">
             <div class="flex items-center gap-3">
-                <div class="w-9 h-9 rounded-xl bg-srt-gold/20 border border-srt-gold/30 flex items-center justify-center shrink-0">
-                    <span class="text-srt-gold-light font-bold text-xs">@initials</span>
+                <div class="w-9 h-9 rounded-lg bg-blue-50 border border-blue-100 flex items-center justify-center shrink-0">
+                    <svg class="h-5 w-5 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.5 20.1a7.5 7.5 0 0115 0 17.9 17.9 0 01-15 0z" />
+                    </svg>
                 </div>
                 <div class="min-w-0">
-                    <div class="font-semibold text-white text-sm truncate">@userName</div>
-                    <div class="text-[11px] text-slate-400">
+                    <div class="font-semibold text-slate-900 text-sm truncate">@userName</div>
+                    <div class="text-[11px] text-slate-500">
                         @(userRole switch {
                             "GeneralOfficer"    => "เจ้าหน้าที่รับเรื่อง",
                             "CorruptionOfficer" => "เจ้าหน้าที่ทุจริต",
@@ -122,14 +130,6 @@
                               d="M12 4v16m8-8H4" />
                     </svg>
                     สร้างเรื่องร้องเรียน
-                </a>
-                <a asp-page="/Staff/Workload"
-                   class="sidebar-link @(IsActive("/Staff/Workload") ? "sidebar-link-active" : "")">
-                    <svg class="w-4 h-4 shrink-0 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                              d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0" />
-                    </svg>
-                    Workload ทีม
                 </a>
                 </div></div>
                 </div>
@@ -215,6 +215,14 @@
                     </svg>
                     หมวดหมู่
                 </a>
+                <a asp-page="/Admin/Departments"
+                   class="sidebar-link @(IsActive("/Admin/Departments") ? "sidebar-link-active" : "")">
+                    <svg class="w-4 h-4 shrink-0 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M3 21h18M5 21V7l7-4 7 4v14M9 10h.01M9 14h.01M9 18h.01M15 10h.01M15 14h.01M15 18h.01" />
+                    </svg>
+                    ฝ่ายที่เกี่ยวข้อง
+                </a>
                 <a asp-page="/Admin/SlaSettings"
                    class="sidebar-link @(IsActive("/Admin/SlaSettings") ? "sidebar-link-active" : "")">
                     <svg class="w-4 h-4 shrink-0 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -299,11 +307,15 @@
         </nav>
 
         <!-- Logout -->
-        <div class="px-3 py-4 border-t border-white/10 shrink-0">
+        <div class="px-3 py-4 border-t border-slate-200 shrink-0">
+            <a asp-page="/Staff/ChangePassword" class="sidebar-link mb-1">
+                <svg class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a4 4 0 1 1-2.8 6.85L5 21H3v-2l7.15-7.2A4 4 0 0 1 15 7Z" /></svg>
+                เปลี่ยนรหัสผ่าน
+            </a>
             <form method="post" asp-page="/Staff/Logout">
                 @Html.AntiForgeryToken()
                 <button type="submit"
-                        class="sidebar-link w-full text-slate-400 hover:text-red-300 hover:bg-red-500/10">
+                        class="sidebar-link w-full text-slate-500 hover:text-red-700 hover:bg-red-50">
                     <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                               d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
@@ -316,26 +328,30 @@
 
     <!-- Sidebar overlay (mobile) -->
     <div id="sidebar-overlay"
-         class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden"
-         onclick="toggleSidebar()"></div>
+         class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden"
+         aria-hidden="true"
+         onclick="setSidebarOpen(false, true)"></div>
 
     <!-- ═══ MAIN AREA ═══ -->
     <div class="flex-1 flex flex-col min-w-0 overflow-hidden">
 
         <!-- Top header bar -->
-        <header class="bg-white border-b border-gray-100 h-16 flex items-center justify-between px-5 shrink-0 shadow-sm z-10">
+        <header class="bg-white border-b border-slate-200 h-16 flex items-center justify-between px-4 sm:px-6 shrink-0 z-10">
             <!-- Mobile sidebar toggle -->
             <button type="button"
-                    onclick="toggleSidebar()"
-                    class="md:hidden p-2 -ml-1 rounded-xl hover:bg-gray-100 text-gray-500 transition"
-                    aria-label="เปิด/ปิดเมนู">
+                    id="sidebar-toggle"
+                    onclick="setSidebarOpen(true)"
+                    class="lg:hidden inline-flex h-11 w-11 -ml-1 items-center justify-center rounded-xl hover:bg-gray-100 text-gray-500 transition"
+                    aria-controls="sidebar"
+                    aria-expanded="false"
+                    aria-label="เปิดเมนูระบบ">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
                 </svg>
             </button>
 
             <!-- Breadcrumb -->
-            <div class="flex items-center gap-2 text-sm ml-2 md:ml-0">
+            <div class="flex items-center gap-2 text-sm ml-2 lg:ml-0">
                 <a asp-page="/Index" class="text-gray-400 hover:text-srt-navy transition text-xs">รฟท.</a>
                 <svg class="w-3 h-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
@@ -345,69 +361,106 @@
 
             <!-- Right: date -->
             <div class="flex items-center gap-3 text-sm">
+                @if (userRole is "GeneralOfficer" or "SuperAdmin")
+                {
+                    <form method="get" asp-page="/Staff/Queue" class="hidden md:block">
+                        <label for="staff-global-search" class="sr-only">ค้นหาเลขที่เรื่อง ชื่อ หรือเบอร์โทร</label>
+                        <input id="staff-global-search" name="Search" type="search" placeholder="ค้นหาเรื่อง…"
+                               class="h-10 w-44 rounded-lg border border-slate-300 px-3 text-sm focus:border-srt-navy focus:outline-none focus:ring-2 focus:ring-srt-navy/20 xl:w-64" />
+                    </form>
+                }
+                else if (userRole == "CorruptionOfficer")
+                {
+                    <form method="get" asp-page="/Corruption/Queue" class="hidden md:block">
+                        <label for="corruption-global-search" class="sr-only">ค้นหาเรื่องทุจริต</label>
+                        <input id="corruption-global-search" name="Search" type="search" placeholder="ค้นหาเรื่องทุจริต…"
+                               class="h-10 w-44 rounded-lg border border-slate-300 px-3 text-sm focus:border-srt-navy focus:outline-none focus:ring-2 focus:ring-srt-navy/20 xl:w-64" />
+                    </form>
+                }
                 <time datetime="@DateTime.UtcNow.ToString("yyyy-MM-dd")"
                       class="hidden sm:block text-xs text-gray-400 font-medium">
                     @DateTime.Now.ToString("d MMMM yyyy", new System.Globalization.CultureInfo("th-TH"))
                 </time>
                 @await Html.PartialAsync("_NotificationBell", notificationBell)
-                <div class="w-8 h-8 rounded-xl bg-srt-navy-50 flex items-center justify-center">
-                    <span class="text-srt-navy font-bold text-xs">@initials</span>
-                </div>
+                <a asp-page="/Staff/ChangePassword" title="บัญชีและรหัสผ่าน" aria-label="บัญชีและรหัสผ่าน" class="w-10 h-10 rounded-xl bg-srt-navy-50 flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-srt-navy">
+                    <svg class="h-4 w-4 text-srt-navy" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.5 20.1a7.5 7.5 0 0115 0 17.9 17.9 0 01-15 0z" />
+                    </svg>
+                </a>
             </div>
         </header>
 
         <!-- Flash messages -->
         @if (TempData["Success"] is string successMsg)
         {
-            <div class="mx-6 mt-4 animate-fade-in" role="alert">
-                <div class="alert-success">
-                    <svg class="w-4 h-4 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
-                    </svg>
-                    <span>@successMsg</span>
-                </div>
-            </div>
+            <div hidden data-swal-toast="success">@successMsg</div>
         }
         @if (TempData["Error"] is string errorMsg)
         {
-            <div class="mx-6 mt-4 animate-fade-in" role="alert">
-                <div class="alert-error">
-                    <svg class="w-4 h-4 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm-1-9a1 1 0 012 0v4a1 1 0 01-2 0V9zm0 6a1 1 0 112 0 1 1 0 01-2 0z" clip-rule="evenodd" />
-                    </svg>
-                    <span>@errorMsg</span>
-                </div>
-            </div>
+            <div hidden data-swal-toast="error">@errorMsg</div>
         }
         @if (TempData["Warning"] is string warnMsg)
         {
-            <div class="mx-6 mt-4 animate-fade-in" role="alert">
-                <div class="alert-warning">
-                    <svg class="w-4 h-4 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                        <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
-                    </svg>
-                    <span>@warnMsg</span>
-                </div>
-            </div>
+            <div hidden data-swal-toast="warning">@warnMsg</div>
         }
 
         <!-- Page content -->
-        <main class="flex-1 overflow-y-auto p-6" id="main-content">
+        <main class="flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8" id="main-content" tabindex="-1">
             @RenderBody()
         </main>
     </div>
 
     <!-- SCRIPTS -->
     <script src="~/lib/htmx.min.js" defer></script>
+    <script src="~/lib/sweetalert2/sweetalert2.all.min.js" asp-append-version="true" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/flatpickr" defer></script>
     <script src="~/js/site.js" asp-append-version="true" defer></script>
     <script>
-        function toggleSidebar() {
-            const sidebar = document.getElementById('sidebar');
-            const overlay = document.getElementById('sidebar-overlay');
-            sidebar.classList.toggle('-translate-x-full');
-            overlay.classList.toggle('hidden');
+        const staffSidebar = document.getElementById('sidebar');
+        const staffSidebarOverlay = document.getElementById('sidebar-overlay');
+        const staffSidebarToggle = document.getElementById('sidebar-toggle');
+        const staffSidebarClose = document.getElementById('sidebar-close');
+        const staffDesktopMedia = window.matchMedia('(min-width: 1024px)');
+
+        function setSidebarOpen(open, restoreFocus = false) {
+            if (staffDesktopMedia.matches) return;
+
+            staffSidebar.classList.toggle('-translate-x-full', !open);
+            staffSidebar.toggleAttribute('inert', !open);
+            staffSidebar.setAttribute('aria-hidden', String(!open));
+            staffSidebarOverlay.classList.toggle('hidden', !open);
+            staffSidebarToggle.setAttribute('aria-expanded', String(open));
+
+            if (open) {
+                staffSidebarClose.focus();
+            } else if (restoreFocus) {
+                staffSidebarToggle.focus();
+            }
         }
+
+        function syncStaffSidebarViewport() {
+            staffSidebarOverlay.classList.add('hidden');
+            staffSidebarToggle.setAttribute('aria-expanded', 'false');
+
+            if (staffDesktopMedia.matches) {
+                staffSidebar.removeAttribute('inert');
+                staffSidebar.removeAttribute('aria-hidden');
+            } else {
+                staffSidebar.classList.add('-translate-x-full');
+                staffSidebar.setAttribute('inert', '');
+                staffSidebar.setAttribute('aria-hidden', 'true');
+            }
+        }
+
+        document.addEventListener('keydown', event => {
+            if (event.key === 'Escape' && staffSidebarToggle.getAttribute('aria-expanded') === 'true') {
+                event.preventDefault();
+                setSidebarOpen(false, true);
+            }
+        });
+
+        staffDesktopMedia.addEventListener('change', syncStaffSidebarViewport);
+        syncStaffSidebarViewport();
 
         function toggleSidebarSection(id) {
             const body = document.getElementById('section-' + id);

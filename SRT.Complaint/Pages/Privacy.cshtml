@@ -1,8 +1,75 @@
-﻿@page
+@page
 @model PrivacyModel
 @{
-    ViewData["Title"] = "Privacy Policy";
+    ViewData["Title"] = "นโยบายความเป็นส่วนตัวและคุกกี้";
 }
-<h1>@ViewData["Title"]</h1>
 
-<p>Use this page to detail your site's privacy policy.</p>
+<div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+    <div class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 sm:p-8">
+        <h1 class="text-2xl sm:text-3xl font-extrabold text-gray-900">นโยบายความเป็นส่วนตัวและคุกกี้</h1>
+        <p class="mt-3 text-gray-600 leading-7">
+            ระบบรับเรื่องร้องเรียนใช้ข้อมูลเท่าที่จำเป็นเพื่อรับเรื่อง ติดต่อกลับ ติดตามผล และรักษาความปลอดภัยของระบบ
+            การยอมรับหลักเกณฑ์ในแบบฟอร์มร้องเรียนจะถูกบันทึกเป็นหลักฐานแยกตามเลขเรื่อง
+        </p>
+
+        <section class="mt-8" aria-labelledby="cookie-heading">
+            <h2 id="cookie-heading" class="text-xl font-bold text-gray-900">คุกกี้ที่ระบบใช้งาน</h2>
+            <div class="mt-4 overflow-x-auto">
+                <table class="min-w-full text-sm border border-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="text-left px-4 py-3">ชื่อ/ประเภท</th>
+                            <th class="text-left px-4 py-3">วัตถุประสงค์</th>
+                            <th class="text-left px-4 py-3">อายุโดยประมาณ</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-200">
+                        <tr>
+                            <td class="px-4 py-3 font-medium">SRT.Antiforgery</td>
+                            <td class="px-4 py-3">ป้องกันการส่งคำขอปลอมแปลง (CSRF)</td>
+                            <td class="px-4 py-3">เฉพาะการใช้งาน</td>
+                        </tr>
+                        <tr>
+                            <td class="px-4 py-3 font-medium">SRT.Session</td>
+                            <td class="px-4 py-3">รักษาสถานะการใช้งานที่จำเป็นของระบบ</td>
+                            <td class="px-4 py-3">30 นาที</td>
+                        </tr>
+                        <tr>
+                            <td class="px-4 py-3 font-medium">SRT.StaffAuth</td>
+                            <td class="px-4 py-3">การเข้าสู่ระบบของเจ้าหน้าที่</td>
+                            <td class="px-4 py-3">สูงสุด 1 ชั่วโมง</td>
+                        </tr>
+                        <tr>
+                            <td class="px-4 py-3 font-medium">SRT.CookieNotice</td>
+                            <td class="px-4 py-3">จดจำว่ารับทราบประกาศคุกกี้ฉบับปัจจุบันแล้ว</td>
+                            <td class="px-4 py-3">180 วัน</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <p class="mt-4 text-sm text-gray-600">
+                ปัจจุบันระบบไม่มีคุกกี้โฆษณาหรือคุกกี้วิเคราะห์พฤติกรรม คุกกี้ที่ไม่จำเป็นถูกบล็อกโดยค่าเริ่มต้น
+                และต้องขอความยินยอมแบบแยกวัตถุประสงค์ก่อนเปิดใช้งานในอนาคต
+            </p>
+        </section>
+
+        <section class="mt-8" aria-labelledby="data-heading">
+            <h2 id="data-heading" class="text-xl font-bold text-gray-900">หลักฐานการยอมรับเงื่อนไข</h2>
+            <p class="mt-3 text-sm text-gray-600 leading-7">
+                เมื่อผู้ร้องยืนยันและยื่นเรื่อง ระบบจะเก็บเลขหลักฐาน เลขเรื่อง เวอร์ชันและสำเนาข้อความที่ยอมรับ
+                ค่าแฮช SHA-256 แหล่งที่มา และวันเวลา UTC เพื่อใช้ตรวจสอบย้อนหลัง โดยไม่เก็บ IP address
+                หรือข้อมูลอุปกรณ์เพิ่มเติมเพื่อวัตถุประสงค์นี้
+            </p>
+        </section>
+
+        <section class="mt-8 rounded-xl border border-gray-200 bg-gray-50 p-5" aria-labelledby="settings-heading">
+            <h2 id="settings-heading" class="text-lg font-bold text-gray-900">การตั้งค่าคุกกี้</h2>
+            <p class="mt-2 text-sm text-gray-600">ลบการรับทราบประกาศได้ ระบบจะแสดงประกาศอีกครั้งในการเปิดหน้าถัดไป</p>
+            <form method="post" asp-page-handler="ResetCookieNotice" class="mt-4">
+                <button type="submit" class="min-h-11 px-4 py-2 rounded-xl border border-gray-300 bg-white text-sm font-semibold text-gray-700 hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-srt-navy">
+                    ลบการตั้งค่าคุกกี้
+                </button>
+            </form>
+        </section>
+    </div>
+</div>

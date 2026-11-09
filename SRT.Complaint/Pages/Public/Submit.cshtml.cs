@@ -1,4 +1,6 @@
 using System.ComponentModel.DataAnnotations;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -33,17 +35,34 @@ public class SubmitModel(
     public IEnumerable<SelectListItem> CategoryOptions { get; set; } = [];
     public string SubCategoriesJson { get; private set; } = "{}";
     public ComplaintTerms? Terms { get; private set; }
+    public string CurrentTermsVersion => Terms?.UpdatedAt.ToUniversalTime().ToString("O") ?? string.Empty;
+    public bool ShowTermsDialog => Terms is { IsActive: true } &&
+        (!Input.AcceptedTerms || !string.Equals(Input.TermsVersion, CurrentTermsVersion, StringComparison.Ordinal));
 
     public async Task OnGetAsync()
     {
         await LoadCategoriesAsync();
         Terms = await termsService.GetTermsAsync();
+        Input.TermsVersion = CurrentTermsVersion;
     }
 
     [EnableRateLimiting("SubmitPolicy")]
     public async Task<IActionResult> OnPostAsync()
     {
         await LoadCategoriesAsync();
+        Terms = await termsService.GetTermsAsync();
+
+        if (Terms is { IsActive: true })
+        {
+            if (!Input.AcceptedTerms)
+                ModelState.AddModelError("Input.AcceptedTerms", "กรุณาอ่านและยอมรับหลักเกณฑ์ก่อนยื่นเรื่องร้องเรียน");
+            if (!string.Equals(Input.TermsVersion, CurrentTermsVersion, StringComparison.Ordinal))
+            {
+                Input.AcceptedTerms = false;
+                Input.TermsVersion = CurrentTermsVersion;
+                ModelState.AddModelError("Input.AcceptedTerms", "หลักเกณฑ์มีการปรับปรุง กรุณาอ่านและยอมรับฉบับล่าสุดอีกครั้ง");
+            }
+        }
 
         // Verify Turnstile token
         var token = Request.Form["cf-turnstile-response"].ToString();
@@ -51,7 +70,6 @@ public class SubmitModel(
         if (!await turnstile.VerifyAsync(token, ip))
         {
             ModelState.AddModelError("", "การยืนยันตัวตน (Turnstile) ล้มเหลว กรุณาลองใหม่อีกครั้ง");
-            Terms = await termsService.GetTermsAsync();
             return Page();
         }
 
@@ -63,6 +81,19 @@ public class SubmitModel(
 
         if (!ModelState.IsValid)
             return Page();
+
+        ComplaintAcceptanceEvidenceInput? acceptanceEvidence = null;
+        if (Terms is { IsActive: true })
+        {
+            var evidenceText = $"{Terms.Title}\n{Terms.Content}";
+            acceptanceEvidence = new ComplaintAcceptanceEvidenceInput(
+                Terms.Title,
+                CurrentTermsVersion,
+                Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(evidenceText))),
+                Terms.Content,
+                "PublicComplaintForm",
+                DateTime.UtcNow);
+        }
 
         var request = new SubmitComplaintRequest(
             Input.ReporterName,
@@ -76,7 +107,8 @@ public class SubmitModel(
             Input.Description,
             Input.Attachments ?? [],
             ReporterPrivacyChoice: Input.ReporterPrivacyChoice,
-            SubmissionPurpose: Input.SubmissionPurpose
+            SubmissionPurpose: Input.SubmissionPurpose,
+            AcceptanceEvidence: acceptanceEvidence
         );
 
         var complaint = await complaintService.SubmitAsync(request);
@@ -140,6 +172,11 @@ public class SubmitModel(
 
 public class ComplaintSubmitViewModel
 {
+    [Range(typeof(bool), "true", "true", ErrorMessage = "กรุณาอ่านและยอมรับหลักเกณฑ์ก่อนยื่นเรื่องร้องเรียน")]
+    public bool AcceptedTerms { get; set; }
+
+    public string TermsVersion { get; set; } = string.Empty;
+
     [Required(ErrorMessage = "กรุณากรอกชื่อ-นามสกุล")]
     [StringLength(200, ErrorMessage = "ชื่อ-นามสกุลต้องไม่เกิน 200 ตัวอักษร")]
     [Display(Name = "ชื่อ-นามสกุล")]
@@ -186,10 +223,12 @@ public class ComplaintSubmitViewModel
     [Display(Name = "หัวข้อย่อย")]
     public int? SubCategoryId { get; set; }
 
+    [Required(ErrorMessage = "กรุณากรอกสถานี / จุดที่เกิดเหตุ")]
     [StringLength(200, ErrorMessage = "ชื่อสถานีต้องไม่เกิน 200 ตัวอักษร")]
     [Display(Name = "สถานี / จุดที่เกิดเหตุ")]
     public string? SubjectStation { get; set; }
 
+    [Required(ErrorMessage = "กรุณาระบุวันที่เกิดเหตุ")]
     [Display(Name = "วันที่เกิดเหตุ")]
     [DataType(DataType.Date)]
     public DateTime? IncidentDate { get; set; }

@@ -13,7 +13,7 @@ from docx.shared import Inches, Pt, RGBColor
 
 
 ROOT = Path(__file__).resolve().parents[1]
-OUTPUT = ROOT / "docs" / "SRT-eDOC-API-Integration-Spec-v1.0.working.docx"
+OUTPUT = ROOT / "docs" / "SRT-eDOC-API-Integration-Spec-v1.0.docx"
 SAMPLE_JSON = ROOT / "docs" / "srt-edoc-document-create-uat-sample.json"
 
 FONT = "Tahoma"
@@ -463,7 +463,7 @@ def add_cover(doc):
         ("เจ้าของเอกสาร", "ระบบรับเรื่องร้องเรียนออนไลน์ การรถไฟแห่งประเทศไทย"),
         ("ผู้รับเอกสาร", "ทีมระบบ eDOC / RW Saraban API"),
         ("เวอร์ชัน", "1.0"),
-        ("วันที่ปรับปรุง", "27 ตุลาคม 2569 (2026-10-27)"),
+        ("วันที่ปรับปรุง", "3 พฤศจิกายน 2569 (2026-11-03)"),
         ("สถานะ", "สำหรับตรวจสอบร่วมและทดสอบ DEV/UAT"),
         ("ระดับข้อมูล", "Internal / Partner Confidential - ไม่มี Credential จริง"),
     ]
@@ -471,7 +471,7 @@ def add_cover(doc):
 
     add_paragraph(
         doc,
-        "เอกสารอ้างอิง: API-RW691027V2, Postman Collection ที่ eDOC ส่งให้ และ implementation ล่าสุดของ SRT Complaint ณ วันที่จัดทำ",
+        "เอกสารอ้างอิง: API-RW691027V2, Postman Collection ที่ eDOC ส่งให้ และ implementation ล่าสุดของ SRT Complaint ณ วันที่ 3 พฤศจิกายน 2569",
         color=MUTED,
         italic=True,
         after=4,
@@ -482,6 +482,101 @@ def add_cover(doc):
         color="7A5A00",
         italic=True,
     )
+
+
+def add_current_revision_section(doc, bullet_id):
+    add_page_break(doc)
+    doc.add_heading("13. บันทึกการปรับปรุงและข้อกำหนดตามระบบปัจจุบัน", level=1)
+    add_callout(
+        doc,
+        "ปรับปรุงเมื่อ 3 พฤศจิกายน 2569",
+        "หัวข้อนี้สรุปผลการตรวจสอบเทียบกับ implementation ปัจจุบันของ SRT Complaint โดยคง API contract ของ eDOC เดิม และเพิ่มข้อกำหนดด้าน mapping, privacy, workflow, error handling และ UAT ที่ต้องใช้ก่อนเปิด Production",
+        fill=LIGHT_BLUE,
+    )
+
+    doc.add_heading("13.1 ขอบเขตและสถานะการทำงาน", level=2)
+    revision_rows = [
+        ("ทิศทาง API", "SRT Complaint เรียกออกไปยัง eDOC เท่านั้น", "แยกจาก Partner API v1 ที่ระบบภายนอกเรียกเข้ามายัง SRT"),
+        ("การยืนยันตัวตน", "Service account + token ของ eDOC", "ส่งทั้ง Bearer และ access-token; เมื่อได้ 401 จะ Login ใหม่และลองซ้ำเพียง 1 ครั้ง"),
+        ("การสร้างเอกสาร", "1 complaint มี EdocDocumentLink ได้ 1 รายการ", "ใช้ ReferenceNumber เป็น WID และป้องกันการ queue ซ้ำในฐานข้อมูล"),
+        ("ผลลัพธ์ไม่ชัดเจน", "timeout, HTTP 5xx หรือ response ที่ยืนยันไม่ได้", "เปลี่ยนเป็น NeedsReview และต้อง Inquiry/Reconcile ก่อน Retry เพื่อป้องกันเอกสารซ้ำ"),
+        ("ไฟล์แนบ", "ส่งหลังสร้างเอกสารหลักสำเร็จ", "ไฟล์ที่ล้มเหลวเป็น NeedsReview และ Retry เฉพาะไฟล์แนบได้โดยไม่สร้างเอกสารหลักใหม่"),
+        ("การติดตาม", "Tracking ตาม TrackingIntervalMinutes", "เมื่อ statusCode เปลี่ยน ระบบเพิ่ม ComplaintNote ประเภท Integration"),
+    ]
+    add_table(doc, ["ประเด็น", "พฤติกรรมปัจจุบัน", "ข้อกำหนดการใช้งาน"], revision_rows, [2000, 3300, 4060], font_size=8.9)
+
+    doc.add_heading("13.2 ข้อมูลที่ส่งและข้อมูลที่ต้องคงไว้ใน SRT", level=2)
+    privacy_rows = [
+        ("ส่งไป eDOC", "ReferenceNumber/WID, ExternalId หรือ ReferenceNumber, ResponsibleDepartment หรือ DepartmentName หรือ DefaultSendTo, Category.Name, CreatedAt, Priority, Description และค่าที่กำหนดใน Edoc configuration"),
+        ("ไม่ส่งใน Create payload ปัจจุบัน", "ReporterName, ReporterPhone, ReporterEmail, ReporterIdCard, ReporterPrivacyChoice, SubmissionPurpose, AcceptanceEvidence และ WorkflowStep"),
+        ("ไฟล์แนบ", "อาจมีข้อมูลส่วนบุคคลแม้ Create payload ไม่มี PII ผู้ปฏิบัติงานต้องตรวจความจำเป็น สิทธิ และชั้นความลับก่อนกดส่ง"),
+        ("Log", "ห้ามบันทึก password, token, Authorization/access-token header, request body เต็ม หรือ Base64 file data"),
+        ("การเปลี่ยน contract", "หากต้องส่งข้อมูลผู้ร้องหรือหลักฐานการยอมรับ ต้องผ่านการอนุมัติด้านกฎหมาย/ความเป็นส่วนตัวและแก้เอกสารฉบับนี้ก่อน"),
+    ]
+    add_table(doc, ["กลุ่มข้อมูล", "ข้อกำหนด"], privacy_rows, [2300, 7060], font_size=9)
+
+    doc.add_heading("13.3 Workflow และสิทธิ์ผู้ใช้งาน", level=2)
+    add_paragraph(
+        doc,
+        "ระบบปัจจุบันจำกัดการสร้าง eDOC ด้วยสิทธิ์แก้ไขเรื่องและสถานะการเปิดใช้งาน integration แต่ยังไม่ได้บังคับ WorkflowStep เฉพาะใน service ดังนั้นก่อน Production ต้องกำหนดขั้นตอนธุรกิจที่อนุญาตให้ส่งให้ชัดเจน เช่น หลังตรวจสอบและจัดประเภทข้อมูลแล้ว และต้องทดสอบว่าผู้ใช้ที่ไม่มีสิทธิ์ไม่สามารถสั่งส่งได้",
+    )
+    for item in [
+        "Basket ที่เลือกต้องอยู่ใน allowlist และ BasketID ต้องเป็นตัวเลข 13 หลัก",
+        "SendTo ใช้ ResponsibleDepartment ก่อน จากนั้น Category.DepartmentName และสุดท้าย Edoc:DefaultSendTo",
+        "Description ต้องมีค่า; ระบบจำกัดความยาว 2,000 ตัวอักษรก่อนส่ง",
+        "การ Retry เมื่อ NeedsReview ต้องทำ Inquiry/Reconcile ก่อนเสมอ และต้องบันทึกผู้ดำเนินการใน audit log",
+        "Production ต้องใช้ HTTPS, hostname allowlist และห้ามชี้ไปยัง ApiDev URL",
+    ]:
+        add_list_item(doc, item, bullet_id)
+
+    doc.add_heading("13.4 กรณีทดสอบเพิ่มเติมที่ต้องผ่าน", level=2)
+    extra_uat_rows = [
+        ("UAT-13", "ResponsibleDepartment", "กำหนด ResponsibleDepartment ต่างจาก Category.DepartmentName", "SendTo ใช้ ResponsibleDepartment"),
+        ("UAT-14", "Privacy/PII", "ตรวจ Create payload และ log ด้วยข้อมูลทดสอบ", "ไม่มีข้อมูลผู้ร้อง/AcceptanceEvidence/token; ไฟล์แนบผ่านการอนุมัติ"),
+        ("UAT-15", "Malformed/oversized response", "จำลอง JSON ไม่ถูกต้องและ response เกิน MaxResponseBytes", "ระบบปฏิเสธ response อย่างปลอดภัย ไม่เปิดเผย secret และไม่ create ซ้ำ"),
+        ("UAT-16", "Host/redirect/private IP", "จำลอง redirect, host นอก allowlist และ private IP เมื่อไม่อนุญาต", "การเชื่อมต่อถูกปฏิเสธและมี log ที่ปลอดภัย"),
+        ("UAT-17", "Workflow/authorization", "ทดลองส่งก่อนขั้นตอนธุรกิจที่อนุมัติและด้วยผู้ใช้ไม่มีสิทธิ์", "ถูกปฏิเสธตาม policy ที่ตกลงก่อน Production"),
+        ("UAT-18", "Attachment retry", "ให้เอกสารหลักสำเร็จแต่ไฟล์แนบหนึ่งรายการล้มเหลว", "ไม่สร้างเอกสารหลักซ้ำ และ Retry เฉพาะไฟล์ที่ล้มเหลว"),
+    ]
+    add_table(doc, ["รหัส", "กรณีทดสอบ", "วิธีทดสอบ", "ผลที่คาดหวัง"], extra_uat_rows, [1100, 2100, 3000, 3160], font_size=8.5)
+
+    doc.add_heading("13.5 Production hardening ที่มีผลต่อระบบรวม", level=2)
+    add_callout(
+        doc,
+        "ขอบเขตที่ต้องแยกให้ชัดเจน",
+        "มาตรการในหัวข้อนี้เป็น control ของ SRT Complaint platform และ Partner API ขาเข้า ไม่ได้เปลี่ยน contract Login/Create/Upload/Inquiry/Tracking ขาออกของ eDOC และไม่ใช้แทน rate limit หรือ statusCode ที่ eDOC เป็นผู้กำหนด",
+        fill=GOLD_FILL,
+        title_color="7A5A00",
+    )
+    hardening_rows = [
+        (
+            "Distributed rate limiting",
+            "โหมดหลาย instance ต้องใช้ Redis หรือ API gateway สำหรับ quota รวม และ Redis สำหรับ shared session",
+            "ไม่จำกัด outbound call ไป eDOC; ทีม eDOC ยังต้องยืนยัน remote rate limit/maintenance window แยกต่างหาก",
+        ),
+        (
+            "Shared Data Protection key ring",
+            "เก็บ key ring ในฐานข้อมูลร่วมและ Production ใช้ certificate ป้องกัน key at rest",
+            "ใช้กับ cookie/session และ secret ที่ระบบป้องกันด้วย Data Protection; eDOC service credential ยังคงเก็บใน Secret Store และ token อยู่ใน memory/cache ตาม implementation",
+        ),
+        (
+            "Workflow-aware status transition",
+            "Partner API ขาเข้าอนุญาต status update เฉพาะ Internal key พร้อม ETag/If-Match และ transition matrix",
+            "ไม่แปลง eDOC tracking statusCode เป็น Complaint.Status อัตโนมัติ; การส่งเอกสาร eDOC ยังต้องผ่าน workflow/authorization policy ในข้อ 13.3",
+        ),
+    ]
+    add_table(doc, ["Control", "ข้อกำหนดที่อนุมัติ", "ผลต่อ eDOC integration"], hardening_rows, [2200, 3300, 3860], font_size=8.6)
+
+    doc.add_heading("13.6 Acceptance ก่อนเปิด Production", level=2)
+    for item in [
+        "Apply migration AddProductionHardening และยืนยันว่ามี Complaints.RowVersion กับตาราง DataProtectionKeys ก่อนเริ่ม application รุ่นใหม่",
+        "ทดสอบ session และการถอด Data Protection secret ข้ามอย่างน้อย 2 instances พร้อมตรวจ certificate/private-key permission",
+        "ทดสอบ quota รวมผ่าน load balancer และ fail policy เมื่อ Redis ไม่พร้อม โดยคำสั่งเขียนต้อง fail closed",
+        "ยืนยันว่า External API key ไม่มี complaints:update และการอัปเดตสถานะภายในต้องใช้ If-Match รุ่นล่าสุด",
+        "รัน UAT eDOC ข้อ 10 และ 13.4 ครบ โดยเฉพาะ WID reconciliation, attachment retry, workflow/authorization และไม่มี secret/PII ใน log",
+        "ยืนยัน Production endpoint, credential, BasketID, remote rate limit, maintenance window และ status code จากทีม eDOC ก่อนตัด traffic",
+    ]:
+        add_list_item(doc, item, bullet_id)
 
 
 def build_document():
@@ -515,6 +610,7 @@ def build_document():
         ("10", "แผนทดสอบ DEV/UAT"),
         ("11", "ความปลอดภัยและการส่งมอบ Credential"),
         ("12", "รายการข้อมูลที่ขอให้ eDOC ยืนยัน"),
+        ("13", "บันทึกการปรับปรุงและข้อกำหนดตามระบบปัจจุบัน"),
     ]
     add_table(doc, ["หัวข้อ", "เนื้อหา"], toc_rows, [1200, 8160], font_size=10)
     add_callout(
@@ -644,7 +740,7 @@ def build_document():
         ("Edoc__Baskets__n__Name", "eDOC/SRT", "ชื่อหน่วยงาน", "ชื่อที่แสดงใน dropdown"),
         ("Edoc__CategoryBasketMappings__{id}", "SRT", "BasketID", "ผูก Complaint Category ID กับ Basket เริ่มต้น"),
         ("Edoc__FromName", "SRT", "ชื่อหน่วยงานต้นทาง", "ส่งเป็น From จำกัด 100 ตัวอักษร"),
-        ("Edoc__DefaultSendTo", "SRT", "ชื่อหน่วยงานปลายทาง", "fallback เมื่อ Category ไม่มี DepartmentName"),
+        ("Edoc__DefaultSendTo", "SRT", "ชื่อหน่วยงานปลายทาง", "fallback เมื่อ Complaint.ResponsibleDepartment และ Category.DepartmentName ไม่มีค่า"),
         ("Edoc__SecretLevel", "eDOC", "0", "ค่าระดับความลับ ต้องให้ eDOC ยืนยัน"),
         ("Edoc__Wstype", "eDOC", "รอยืนยัน", "ความหมาย/ค่าที่รองรับต้องให้ eDOC ยืนยัน"),
         ("Edoc__ReceiveDoc", "eDOC", "รอยืนยัน", "ความหมาย/ค่าที่รองรับต้องให้ eDOC ยืนยัน"),
@@ -680,7 +776,7 @@ Edoc__CategoryBasketMappings__1=1000000000001"""
         ("BasketID", "Basket ที่ผู้ใช้เลือก", "จำเป็น/13 digits", "1000000000001", "ต้องอยู่ใน allowlist"),
         ("RefNumber", "ExternalId หรือ ReferenceNumber", "≤100", "SRT-UAT-2569-000001", "ใช้ trace ต้นทาง"),
         ("From", "Edoc:FromName", "≤100", "งานประชาสัมพันธ์ฯ", "ชื่อหน่วยงานต้นทาง"),
-        ("SendTo", "Category.DepartmentName หรือ DefaultSendTo", "≤100", "ฝ่ายทดสอบ A", "ต้องมีค่าอย่างน้อยหนึ่งแหล่ง"),
+        ("SendTo", "ResponsibleDepartment → Category.DepartmentName → DefaultSendTo", "≤100", "ฝ่ายทดสอบ A", "เลือกแหล่งแรกที่มีค่า"),
         ("Subject", "เลขเรื่อง + Category.Name", "≤255", "ทดสอบสร้างเอกสาร...", "ระบบสร้างอัตโนมัติ"),
         ("DocDate", "Complaint.CreatedAt เวลาไทย", "date string", "2569/10/27", "ปี พ.ศ./ค.ศ. ตั้งค่าได้"),
         ("Priority", "Complaint.Priority", "code", "00", "Normal/Low=00, High=01, Urgent=02, Critical=03"),
@@ -877,6 +973,8 @@ Edoc__CategoryBasketMappings__1=1000000000001"""
         ("อนุมัติ Production", "□ อนุมัติ  □ ยังไม่อนุมัติ  ผู้อนุมัติ __________________  วันที่ __________"),
     ]
     add_table(doc, ["รายการ", "รายละเอียด"], signoff_rows, [2500, 6860], font_size=10)
+
+    add_current_revision_section(doc, bullet_id)
 
     # Apply the same page geometry and running furniture to every section.
     for idx, section in enumerate(doc.sections):

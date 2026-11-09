@@ -46,17 +46,25 @@ public class WebhooksController(
     [HttpPost(Name = "CreateWebhookV1")]
     [RequireScope("webhooks:manage")]
     [RequestSizeLimit(64 * 1024)]
+    [Consumes("application/json")]
     public async Task<IActionResult> CreateWebhook([FromBody] CreateWebhookDto dto, CancellationToken ct)
     {
         try
         {
-            var invalidEvents = dto.Events.Except(AllowedEvents, StringComparer.OrdinalIgnoreCase).ToList();
+            if (dto.Events.Any(string.IsNullOrWhiteSpace))
+                return BadRequest(ApiError("invalid_event", "events must not contain blank values"));
+
+            var normalizedEvents = dto.Events
+                .Select(x => x.Trim().ToLowerInvariant())
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+            var invalidEvents = normalizedEvents.Except(AllowedEvents, StringComparer.Ordinal).ToList();
             if (invalidEvents.Count > 0)
                 return BadRequest(ApiError("unknown_event", $"Unknown events: {string.Join(", ", invalidEvents)}"));
 
             var apiKey = CurrentApiKey;
             var (webhook, rawSecret) = await webhookService.CreateAsync(
-                apiKey.Id, dto.Name, dto.TargetUrl, dto.Events, ct);
+                apiKey.Id, dto.Name, dto.TargetUrl, normalizedEvents, ct);
 
             return StatusCode(StatusCodes.Status201Created, new
             {
@@ -65,7 +73,7 @@ public class WebhooksController(
                 webhook.TargetUrl,
                 webhook.IsActive,
                 webhook.CreatedAt,
-                events = dto.Events,
+                events = normalizedEvents,
                 secret = rawSecret,
                 message = "เก็บ secret นี้ไว้ตรวจสอบลายเซ็น Webhook ระบบจะไม่แสดงอีกครั้ง"
             });
@@ -86,11 +94,8 @@ public class WebhooksController(
     public async Task<IActionResult> DeleteWebhook(int id, CancellationToken ct)
     {
         var apiKey = CurrentApiKey;
-        var webhooks = await webhookService.ListByApiKeyAsync(apiKey.Id, ct);
-        if (!webhooks.Any(w => w.Id == id))
+        if (!await webhookService.DeleteForApiKeyAsync(id, apiKey.Id, ct))
             return NotFound(ApiError("not_found", "Webhook not found"));
-
-        await webhookService.DeleteAsync(id, ct);
         return NoContent();
     }
 

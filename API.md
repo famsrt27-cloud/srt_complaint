@@ -1,611 +1,410 @@
-# REST API — ระบบรับเรื่องร้องเรียน รฟท.
+# SRT Complaint Partner API v1
 
-> **เอกสารนี้เป็นข้อมูล API รุ่นเดิมและเก็บไว้เพื่ออ้างอิงเท่านั้น**
-> สำหรับ `/api/v1`, Partner ownership, Idempotency และ Signed Webhook ให้ใช้
-> [คู่มือ Partner API v1](docs/partner-api-v1-integration-guide.md) เป็นเอกสารหลัก
+เอกสารนี้เป็น API contract หลักของระบบรับเรื่องร้องเรียน รฟท. สำหรับการเชื่อมต่อกับ Partner ภายนอกและระบบภายใน
 
-เอกสารนี้อธิบาย REST API ของระบบรับเรื่องร้องเรียนออนไลน์ การรถไฟแห่งประเทศไทย  
-สำหรับระบบภายนอกที่ต้องการเชื่อมต่อ เช่น e-Document, ระบบ Dashboard, หรือ Third-party Integrations
+- API version: `v1`
+- Route prefix: `/api/v1`
+- OpenAPI document: `/openapi/v1.json`
+- คู่มือเชื่อมต่อฉบับละเอียด: [`docs/partner-api-v1-integration-guide.md`](docs/partner-api-v1-integration-guide.md)
+- Postman collection: [`docs/srt-complaint-api-v1.postman_collection.json`](docs/srt-complaint-api-v1.postman_collection.json)
 
----
+> Base URL ของ Sandbox และ Production ต้องรับจากผู้ดูแลระบบ ห้ามสมมติ hostname จากตัวอย่างในเอกสาร
 
-## สารบัญ
+## Authentication และการแยกข้อมูล
 
-- [Base URL](#base-url)
-- [Authentication](#authentication)
-- [Scopes (สิทธิ์)](#scopes-สิทธิ์)
-- [Rate Limiting](#rate-limiting)
-- [Error Responses](#error-responses)
-- [Complaints API](#complaints-api)
-- [Statistics API](#statistics-api)
-- [Webhooks API](#webhooks-api)
-- [Webhook Events (Outbound)](#webhook-events-outbound)
-
----
-
-## Base URL
-
-```
-https://www.railway.co.th/complaint
-```
-
-ตัวอย่าง: `https://www.railway.co.th/complaint/api/complaints/SRT-COMPL-2568-0001`
-
----
-
-## Authentication
-
-ทุก request ต้องส่ง API Key ใน HTTP Header:
-
-```
-X-API-Key: srt_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-```
-
-API Key ขอได้จาก Super Admin ผ่านหน้า **Admin → API Keys**
-
-> **ข้อสำคัญ:** เก็บ API Key เป็นความลับ อย่า commit ลง source code  
-> ถ้า Key หาย ให้ Revoke ทันทีและขอ Key ใหม่
-
----
-
-## Scopes (สิทธิ์)
-
-แต่ละ API Key ถูกกำหนด Scope ที่อนุญาต — request ที่ใช้ Scope นอกเหนือจากที่กำหนดจะได้รับ `403 Forbidden`
-
-| Scope | คำอธิบาย |
-|---|---|
-| `complaints:read` | ดูรายละเอียดเรื่องร้องเรียน |
-| `complaints:write` | สร้างเรื่องร้องเรียนใหม่ |
-| `complaints:status` | ดูสถานะเรื่องร้องเรียน |
-| `complaints:update` | อัปเดตสถานะเรื่องร้องเรียน |
-| `complaints:edoc` | ดึง e-Document payload |
-| `stats:summary` | ดูสถิติสรุป |
-| `stats:detailed` | ดูสถิติละเอียด |
-| `corruption:stats` | ดูสถิติเรื่องทุจริต |
-| `webhooks:manage` | จัดการ Webhook endpoints |
-
----
-
-## Rate Limiting
-
-- **Sliding Window:** 60 วินาที / Key
-- เมื่อเกิน limit → `429 Too Many Requests`
-- Header ที่ส่งกลับ:
-
-```
-X-RateLimit-Limit: 100
-X-RateLimit-Remaining: 42
-X-RateLimit-Reset: 1717123456
-```
-
----
-
-## Error Responses
-
-รูปแบบ error response มาตรฐาน:
-
-```json
-{
-  "error": "คำอธิบายข้อผิดพลาด",
-  "details": { }
-}
-```
-
-| HTTP Status | ความหมาย |
-|---|---|
-| `400 Bad Request` | ข้อมูลที่ส่งมาไม่ถูกต้อง |
-| `401 Unauthorized` | ไม่มี API Key หรือ Key ไม่ถูกต้อง |
-| `403 Forbidden` | Key ไม่มีสิทธิ์ (Scope ไม่ตรง) หรือ IP ไม่อยู่ใน Whitelist |
-| `404 Not Found` | ไม่พบข้อมูล |
-| `429 Too Many Requests` | เกิน Rate Limit |
-| `500 Internal Server Error` | ข้อผิดพลาดของระบบ |
-
----
-
-## Complaints API
-
-### GET /api/complaints/{referenceNumber}
-
-ดูรายละเอียดเรื่องร้องเรียนทั้งหมด
-
-**Scope ที่ต้องการ:** `complaints:read`
-
-**ตัวอย่าง Request:**
+ทุก endpoint ต้องส่ง API key ผ่าน header:
 
 ```http
-GET /api/complaints/SRT-COMPL-2568-0001
-X-API-Key: srt_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+X-API-Key: srt_test_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
-**ตัวอย่าง Response (200 OK):**
+API key แต่ละตัวผูกกับ:
+
+- environment: `Sandbox` หรือ `Production`
+- Partner เจ้าของข้อมูล
+- scopes ที่ได้รับอนุญาต
+- data access mode: `Own` หรือ `All`
+- rate limit ต่อหนึ่งนาที
+- วันหมดอายุ สถานะ revoke และ IP allowlist (ถ้ามี)
+
+External key อนุญาตเฉพาะ `Own` จึงอ่านหรือแก้ได้เฉพาะ complaint ของ Partner ตนเอง หากขอ resource ของ Partner อื่น ระบบตอบ `404` เพื่อลดการเดาหรือไล่เลขอ้างอิง
+
+### Scopes
+
+| Scope | ใช้กับ |
+|---|---|
+| `complaints:read` | รายการและรายละเอียด complaint |
+| `complaints:write` | สร้าง complaint |
+| `complaints:status` | อ่านสถานะแบบย่อ |
+| `complaints:update` | อัปเดตสถานะภาพรวม; อนุญาตเฉพาะ Internal key |
+| `complaints:edoc` | อ่าน eDOC payload ซึ่งมี PII |
+| `metadata:read` | category, status และ webhook event metadata |
+| `stats:summary` | สถิติสรุป |
+| `stats:detailed` | สถิติแยกรายละเอียด |
+| `corruption:stats` | สถิติทุจริต; ต้องเป็น Internal key และ `DataAccessMode=All` |
+| `webhooks:manage` | ลงทะเบียน ดู และปิด webhook |
+
+## Request และ response มาตรฐาน
+
+ส่ง JSON ด้วย UTF-8:
+
+```http
+Accept: application/json
+Content-Type: application/json; charset=utf-8
+X-API-Key: <secret>
+```
+
+วันเวลาใช้ ISO 8601 และ response ของระบบเป็น UTC ตัวอย่าง `2026-11-03T04:30:00Z` ส่วน `updatedSince` ควรมี offset หรือ `Z` ชัดเจน
+
+### Error envelope
 
 ```json
 {
-  "referenceNumber": "SRT-COMPL-2568-0001",
-  "status": "InProgress",
-  "statusTh": "กำลังดำเนินการ",
-  "priority": "Normal",
-  "priorityTh": "ปกติ",
-  "category": "บริการบนขบวนรถ",
-  "department": "ฝ่ายการเดินรถ",
-  "reporterName": "สมชาย ใจดี",
-  "reporterPhone": "0812345678",
-  "reporterEmail": "somchai@example.com",
-  "subjectStation": "สถานีกรุงเทพ",
-  "incidentDate": "2025-05-20",
-  "description": "พนักงานบนรถไฟไม่สุภาพ...",
-  "assignedTo": "นายวิชัย รักงาน",
-  "slaDeadline": "2025-05-27T09:00:00Z",
-  "slaBreached": false,
-  "createdAt": "2025-05-20T10:30:00Z",
-  "updatedAt": "2025-05-21T08:00:00Z",
-  "closedAt": null,
-  "satisfactionScore": null
+  "error": {
+    "code": "validation_error",
+    "message": "Request validation failed",
+    "details": {
+      "dto.description": ["The field Description must be a string with a minimum length of 10."]
+    },
+    "traceId": "0HNA..."
+  }
 }
 ```
 
----
+`details` มีเฉพาะ error บางประเภท เมื่อแจ้งปัญหาให้ส่ง `traceId`, เวลา UTC, method, path และ HTTP status โดยห้ามส่ง API key
 
-### POST /api/complaints
+| Status | ความหมายและการจัดการ |
+|---:|---|
+| `200` | สำเร็จ |
+| `201` | สร้างสำเร็จ |
+| `204` | ปิด webhook สำเร็จและไม่มี response body |
+| `400` | รูปแบบ request, query หรือ header ไม่ถูกต้อง; แก้ก่อนส่งใหม่ |
+| `401` | API key หาย ไม่ถูกต้อง หมดอายุ ถูก revoke หรือผิด environment |
+| `403` | scope, data-access mode หรือ IP allowlist ไม่ผ่าน |
+| `404` | ไม่พบ endpoint/resource หรือ resource ไม่ใช่ของ Partner |
+| `405` | HTTP method ไม่ถูกต้อง |
+| `409` | duplicate external reference หรือ idempotency conflict/in progress |
+| `412` | `If-Match` ไม่ตรงกับ version ปัจจุบัน; อ่านข้อมูลล่าสุดแล้วพิจารณาคำสั่งใหม่ |
+| `415` | endpoint เขียนข้อมูลต้องใช้ `application/json` |
+| `422` | business validation ไม่ผ่าน เช่น category/subcategory/status ไม่ถูกต้อง |
+| `428` | ไม่ส่ง `If-Match` สำหรับคำสั่งอัปเดตสถานะ |
+| `429` | เกิน rate limit; รอตาม `Retry-After` พร้อม jitter |
+| `503` | distributed rate limiter ไม่พร้อมใช้งาน; คำสั่งเขียนถูกปฏิเสธชั่วคราว |
+| `500` | ระบบขัดข้อง; retry แบบ exponential backoff |
 
-สร้างเรื่องร้องเรียนใหม่จากระบบภายนอก
+### Rate limiting
 
-**Scope ที่ต้องการ:** `complaints:write`
+ระบบใช้ fixed window หนึ่งนาทีต่อ API key ภายใน application instance และส่ง header หลัง authentication สำเร็จ:
 
-**Request Body:**
-
-```json
-{
-  "reporterName": "สมชาย ใจดี",
-  "reporterPhone": "0812345678",
-  "reporterEmail": "somchai@example.com",
-  "categoryId": 3,
-  "subjectStation": "สถานีกรุงเทพ",
-  "incidentDate": "2025-05-20T00:00:00Z",
-  "description": "รายละเอียดเรื่องร้องเรียน (ขั้นต่ำ 10 ตัวอักษร)"
-}
+```http
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 42
+X-RateLimit-Reset: 1793673060
 ```
 
-| Field | Type | Required | คำอธิบาย |
+เมื่อเกินกำหนด:
+
+```http
+HTTP/1.1 429 Too Many Requests
+Retry-After: 23
+X-RateLimit-Remaining: 0
+```
+
+เมื่อ `DistributedRuntime:Mode=MultiInstance` ระบบบังคับให้เลือก `RateLimitProvider=Redis` หรือ `Gateway` และใช้ Redis เป็น distributed session cache หากเลือก Redis ตัวนับ quota จะเป็น atomic และรวมกันทุก instance; หาก Redis ขัดข้อง คำสั่งเขียนตอบ `503 rate_limit_unavailable` ส่วน safe read ใช้ emergency local limit ที่เข้มกว่าชั่วคราว
+
+## Endpoint inventory
+
+ทุก endpoint ด้านล่างผ่าน API key authentication, scope check และ request logging
+
+| Method | Path | Scope | หมายเหตุ |
 |---|---|---|---|
-| `reporterName` | string | ✅ | ชื่อผู้ร้องเรียน (max 200) |
-| `reporterPhone` | string | ✅ | เบอร์โทรศัพท์ (max 20) |
-| `reporterEmail` | string | — | อีเมล (ตรวจรูปแบบ) |
-| `categoryId` | int | ✅ | ID หมวดหมู่เรื่อง (ดูจาก Admin → Categories) |
-| `subjectStation` | string | — | สถานี/สถานที่เกิดเหตุ |
-| `incidentDate` | datetime | — | วันที่เกิดเหตุ (ISO 8601) |
-| `description` | string | ✅ | รายละเอียด (min 10 ตัวอักษร) |
+| `GET` | `/api/v1/complaints` | `complaints:read` | Sync/reconciliation; แบ่งหน้า 1–100 รายการ |
+| `GET` | `/api/v1/complaints/by-external-reference/{externalReference}` | `complaints:read` | ค้นด้วยเลขของ Partner |
+| `GET` | `/api/v1/complaints/{referenceNumber}` | `complaints:read` | รายละเอียดรวม PII |
+| `POST` | `/api/v1/complaints` | `complaints:write` | ต้องมี `Idempotency-Key` |
+| `GET` | `/api/v1/complaints/{referenceNumber}/status` | `complaints:status` | สถานะและ workflow แบบย่อ |
+| `PUT` | `/api/v1/complaints/{referenceNumber}/status` | `complaints:update` | Internal key เท่านั้น; ต้องส่ง `If-Match` และผ่าน transition policy |
+| `GET` | `/api/v1/complaints/{referenceNumber}/edoc-payload` | `complaints:edoc` | ข้อมูลสำหรับ eDOC; มี PII |
+| `GET` | `/api/v1/metadata/categories` | `metadata:read` | เฉพาะ category/subcategory ที่ active |
+| `GET` | `/api/v1/metadata/statuses` | `metadata:read` | status codes ที่ API รองรับ |
+| `GET` | `/api/v1/metadata/webhook-events` | `metadata:read` | event codes ที่ลงทะเบียนได้ |
+| `GET` | `/api/v1/stats/summary` | `stats:summary` | สถิติตาม data-access mode |
+| `GET` | `/api/v1/stats/detailed` | `stats:detailed` | แยก category, priority, status |
+| `GET` | `/api/v1/stats/corruption` | `corruption:stats` | Internal + All เท่านั้น |
+| `GET` | `/api/v1/webhooks` | `webhooks:manage` | รายการของ API key ปัจจุบัน |
+| `POST` | `/api/v1/webhooks` | `webhooks:manage` | สูงสุด 10 active webhooks ต่อ API key |
+| `DELETE` | `/api/v1/webhooks/{id}` | `webhooks:manage` | ปิดเฉพาะ webhook ของ API key ปัจจุบัน |
 
-**ตัวอย่าง Response (201 Created):**
+## Complaint API
+
+### List / reconciliation
+
+```http
+GET /api/v1/complaints?updatedSince=2026-11-03T00:00:00Z&status=InProgress&page=1&pageSize=20
+X-API-Key: <secret>
+```
+
+Query:
+
+- `updatedSince`: optional ISO 8601 timestamp พร้อม offset
+- `status`: optional; ต้องอยู่ใน metadata status list
+- `page`: ค่าเริ่มต้น `1`, ต้องไม่น้อยกว่า `1`
+- `pageSize`: ค่าเริ่มต้น `20`, ช่วง `1–100`
 
 ```json
 {
-  "referenceNumber": "SRT-COMPL-2568-0042",
+  "data": [
+    {
+      "referenceNumber": "SRT-COMPL-2569-0123",
+      "externalReference": "PARTNER-2026-000123",
+      "status": "InProgress",
+      "workflowStep": "Investigation",
+      "workflowStepTh": "กำลังดำเนินการ",
+      "workflowUpdatedAt": "2026-11-03T04:20:00Z",
+      "priority": "Normal",
+      "category": "การให้บริการ",
+      "subjectStation": "กรุงเทพอภิวัฒน์",
+      "createdAt": "2026-11-02T03:00:00Z",
+      "updatedAt": "2026-11-03T04:20:00Z"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "pageSize": 20,
+    "total": 1,
+    "totalPages": 1
+  }
+}
+```
+
+`status` เป็นสถานะภาพรวมเพื่อความเข้ากันได้กับระบบเดิม ส่วน `workflowStep` เป็นขั้นตอน back-office ปัจจุบัน Partner ต้องไม่ใช้สอง field นี้แทนกัน
+
+### Create complaint
+
+```http
+POST /api/v1/complaints
+Content-Type: application/json
+X-API-Key: <secret>
+Idempotency-Key: 6f8c4de2-7d8b-4ae7-ae70-df33c8fe15ad
+```
+
+```json
+{
+  "externalReference": "PARTNER-2026-000123",
+  "reporterName": "สมชาย ใจดี",
+  "reporterPhone": "0812345678",
+  "reporterEmail": "somchai@example.com",
+  "categoryId": 1,
+  "subCategoryId": 3,
+  "subjectStation": "กรุงเทพอภิวัฒน์",
+  "incidentDate": "2026-11-02",
+  "description": "รายละเอียดเรื่องร้องเรียนอย่างน้อย 10 ตัวอักษร",
+  "latitude": 13.803,
+  "longitude": 100.539
+}
+```
+
+Validation สำคัญ:
+
+- `externalReference`: บังคับ, สูงสุด 100 ตัวอักษร และ unique ต่อ Partner
+- `reporterName`: บังคับ, สูงสุด 200 ตัวอักษร
+- `reporterPhone`: บังคับ, สูงสุด 20 ตัวอักษร
+- `reporterEmail`: optional, รูปแบบอีเมล, สูงสุด 200 ตัวอักษร
+- `categoryId`: ต้องเป็น active category
+- `subCategoryId`: ถ้ามีต้อง active และอยู่ใต้ `categoryId` ที่ส่งมา
+- `description`: 10–5,000 ตัวอักษร
+- `latitude`: `-90..90`; `longitude`: `-180..180`
+- request body จำกัด 256 KiB และ endpoint นี้ไม่รับไฟล์แนบ
+
+Response `201`:
+
+```json
+{
+  "referenceNumber": "SRT-COMPL-2569-0123",
+  "externalReference": "PARTNER-2026-000123",
   "status": "Pending",
-  "slaDeadline": "2025-05-27T09:00:00Z",
-  "trackingUrl": "https://www.railway.co.th/complaint/track/SRT-COMPL-2568-0042",
+  "slaDeadline": "2026-11-10T04:30:00Z",
+  "resourceUrl": "/api/v1/complaints/SRT-COMPL-2569-0123",
   "message": "รับเรื่องร้องเรียนเรียบร้อยแล้ว"
 }
 ```
 
----
+#### Idempotency
 
-### GET /api/complaints/{referenceNumber}/status
+- `Idempotency-Key` บังคับและยาว 8–128 ตัวอักษร; แนะนำ UUID v4
+- ระบบเก็บ request hash และผลลัพธ์ 24 ชั่วโมงต่อ API key
+- key เดิม + payload เดิม: replay response เดิมและส่ง `Idempotent-Replayed: true`
+- key เดิม + payload ต่าง: `409 idempotency_conflict`
+- request เดิมยังประมวลผล: `409 request_in_progress`
+- เมื่อ client timeout ให้ retry payload เดิมด้วย key เดิม
 
-ดูเฉพาะสถานะเรื่องร้องเรียน (lightweight endpoint)
+### Read by reference
 
-**Scope ที่ต้องการ:** `complaints:status`
+```http
+GET /api/v1/complaints/SRT-COMPL-2569-0123
+GET /api/v1/complaints/by-external-reference/PARTNER-2026-000123
+```
 
-**ตัวอย่าง Response (200 OK):**
+Response มีข้อมูลผู้ร้อง จึงต้องจำกัดการเก็บ log/cache และใช้ scope `complaints:read` เฉพาะระบบที่จำเป็น Response มีทั้ง `status`, `statusTh`, `workflowStep`, `workflowStepTh` และ `workflowUpdatedAt`
+
+### Read status
+
+```http
+GET /api/v1/complaints/SRT-COMPL-2569-0123/status
+```
+
+Response ส่ง `ETag` และ field `version` (Base64 ของ SQL Server `rowversion`) สำหรับ optimistic concurrency ตัวอย่าง `ETag: "AAAAAAAAB9E="` ต้องเก็บค่านี้ไว้ใช้กับคำสั่งอัปเดตสถานะ
 
 ```json
 {
-  "referenceNumber": "SRT-COMPL-2568-0001",
-  "status": "Resolved",
-  "statusTh": "แก้ไขแล้ว",
-  "updatedAt": "2025-05-25T14:30:00Z",
-  "closedAt": "2025-05-25T14:30:00Z",
-  "slaBreached": false
+  "referenceNumber": "SRT-COMPL-2569-0123",
+  "externalReference": "PARTNER-2026-000123",
+  "status": "InProgress",
+  "statusTh": "กำลังดำเนินการ",
+  "workflowStep": "Investigation",
+  "workflowStepTh": "กำลังดำเนินการ",
+  "workflowUpdatedAt": "2026-11-03T04:20:00Z",
+  "updatedAt": "2026-11-03T04:20:00Z",
+  "closedAt": null,
+  "slaBreached": false,
+  "version": "AAAAAAAAB9E="
 }
 ```
 
----
+### Update summary status
 
-### PUT /api/complaints/{referenceNumber}/status
-
-อัปเดตสถานะเรื่องร้องเรียนจากระบบภายนอก
-
-**Scope ที่ต้องการ:** `complaints:update`
-
-**Request Body:**
+```http
+PUT /api/v1/complaints/SRT-COMPL-2569-0123/status
+Content-Type: application/json
+If-Match: "AAAAAAAAB9E="
+```
 
 ```json
 {
   "newStatus": "Resolved",
-  "note": "ดำเนินการแก้ไขเรียบร้อยแล้ว"
+  "note": "Partner ดำเนินการแก้ไขแล้ว"
 }
 ```
 
-| Field | Type | Required | คำอธิบาย |
-|---|---|---|---|
-| `newStatus` | string | ✅ | ค่าที่รองรับด้านล่าง |
-| `note` | string | — | หมายเหตุแนบการเปลี่ยนสถานะ |
+Endpoint นี้สงวนให้ Internal key เท่านั้น External key จะได้ `403 external_status_update_disabled` แม้เป็น key เดิมที่เคยมี scope นี้อยู่ และไม่สามารถสร้าง External key ใหม่พร้อม `complaints:update` ได้
 
-**ค่าสถานะที่รองรับ:**
+`newStatus` ต้องอยู่ในรายการจาก `/metadata/statuses`; `note` สูงสุด 2,000 ตัวอักษรและบังคับเมื่อเปลี่ยนเป็น `WaitingInfo`, `Forwarded`, `Closed` หรือ `Rejected` Client กำหนด `workflowStep` โดยตรงไม่ได้ ระบบตรวจสถานะกับ workflow ปัจจุบันดังนี้:
 
-| ค่า | ความหมาย |
+| Workflow ปัจจุบัน | Status ที่อนุญาต |
 |---|---|
-| `Pending` | รอดำเนินการ |
-| `InProgress` | กำลังดำเนินการ |
-| `WaitingInfo` | รอข้อมูลเพิ่มเติม |
-| `Forwarded` | ส่งต่อแผนก |
-| `UnderReview` | อยู่ระหว่างพิจารณา |
-| `Resolved` | แก้ไขแล้ว |
-| `Closed` | ปิดเรื่อง |
-| `Rejected` | ปฏิเสธ |
+| `Received` | `Pending`, `Rejected` |
+| `Screening` | `InProgress`, `WaitingInfo`, `Rejected` |
+| `WaitingInfo` | `WaitingInfo`, `InProgress`, `Rejected` |
+| `Classification`, `Investigation` | `InProgress`, `Forwarded` |
+| `Summary` | `Resolved` |
+| `Notification`, `NotificationRetry` | `Resolved`, `Closed` |
+| `Completed` | `Closed` |
+| `Rejected` | `Rejected` |
 
-**ตัวอย่าง Response (200 OK):**
+หากไม่ส่ง `If-Match` ตอบ `428`; หาก version ล้าสมัยตอบ `412`; หาก transition ไม่ถูกต้องตอบ `409 invalid_status_transition` เมื่อสำเร็จ response และ `ETag` ใหม่จะมี version ล่าสุด
 
-```json
-{
-  "referenceNumber": "SRT-COMPL-2568-0001",
-  "newStatus": "Resolved",
-  "message": "อัปเดตสถานะเรียบร้อยแล้ว"
-}
+### eDOC payload
+
+```http
+GET /api/v1/complaints/SRT-COMPL-2569-0123/edoc-payload
 ```
 
----
+Response รวม reporter, complaint และ resolution data และมีข้อมูลส่วนบุคคล จึงควรให้ scope นี้เฉพาะระบบ eDOC หรือระบบภายในที่จำเป็น
 
-### GET /api/complaints/{referenceNumber}/edoc-payload
+## Metadata API
 
-ดึงข้อมูล payload สำหรับระบบ e-Document ของ รฟท.
-
-**Scope ที่ต้องการ:** `complaints:edoc`
-
-**ตัวอย่าง Response (200 OK):**
-
-```json
-{
-  "schemaVersion": "1.0",
-  "generatedAt": "2025-05-28T07:00:00Z",
-  "referenceNumber": "SRT-COMPL-2568-0001",
-  "reporter": {
-    "name": "สมชาย ใจดี",
-    "phone": "0812345678",
-    "email": "somchai@example.com"
-  },
-  "complaint": {
-    "category": "บริการบนขบวนรถ",
-    "department": "ฝ่ายการเดินรถ",
-    "priority": "Normal",
-    "priorityTh": "ปกติ",
-    "subjectStation": "สถานีกรุงเทพ",
-    "incidentDate": "2025-05-20",
-    "description": "พนักงานบนรถไฟไม่สุภาพ...",
-    "submittedAt": "2025-05-20T10:30:00Z"
-  },
-  "resolution": {
-    "status": "Resolved",
-    "statusTh": "แก้ไขแล้ว",
-    "assignedTo": "นายวิชัย รักงาน",
-    "slaDeadline": "2025-05-27T09:00:00Z",
-    "slaBreached": false,
-    "closedAt": "2025-05-25T14:30:00Z",
-    "resolutionNote": "ได้ดำเนินการตักเตือนพนักงานแล้ว"
-  }
-}
+```http
+GET /api/v1/metadata/categories
+GET /api/v1/metadata/statuses
+GET /api/v1/metadata/webhook-events
 ```
 
----
+Partner ควรดึง category และ status จาก metadata แทนการฝังค่าไว้ใน client
 
 ## Statistics API
 
-### GET /api/stats/summary
-
-สรุปสถิติเรื่องร้องเรียนทั่วไป
-
-**Scope ที่ต้องการ:** `stats:summary`
-
-**ตัวอย่าง Response (200 OK):**
-
-```json
-{
-  "asOf": "2025-05-28T07:00:00Z",
-  "complaints": {
-    "total": 1420,
-    "pending": 38,
-    "inProgress": 125,
-    "resolved": 1180,
-    "closed": 60,
-    "rejected": 17,
-    "slaBreached": 5,
-    "todayNew": 12
-  }
-}
+```http
+GET /api/v1/stats/summary
+GET /api/v1/stats/detailed
+GET /api/v1/stats/corruption
 ```
 
----
+สถิติ complaint ปกติถูกกรองตาม data-access mode ของ key ส่วน corruption statistics ต้องใช้ Internal key ที่มี `DataAccessMode=All`
 
-### GET /api/stats/detailed
+## Webhook API
 
-สถิติแยกรายหมวด ความเร่งด่วน และสถานะ
-
-**Scope ที่ต้องการ:** `stats:detailed`
-
-**ตัวอย่าง Response (200 OK):**
-
-```json
-{
-  "asOf": "2025-05-28T07:00:00Z",
-  "byCategory": [
-    { "category": "บริการบนขบวนรถ", "count": 420 },
-    { "category": "ความปลอดภัย", "count": 310 }
-  ],
-  "byPriority": [
-    { "priority": "Critical", "count": 8 },
-    { "priority": "Normal", "count": 980 }
-  ],
-  "byStatus": [
-    { "status": "Pending", "count": 38 },
-    { "status": "InProgress", "count": 125 }
-  ],
-  "averageResolutionHours": 54.3
-}
-```
-
----
-
-### GET /api/stats/corruption
-
-สรุปสถิติเรื่องแจ้งเบาะแสทุจริต
-
-**Scope ที่ต้องการ:** `corruption:stats`
-
-**ตัวอย่าง Response (200 OK):**
-
-```json
-{
-  "asOf": "2025-05-28T07:00:00Z",
-  "reports": {
-    "total": 47,
-    "pending": 5,
-    "inProgress": 12,
-    "underReview": 8,
-    "closed": 20,
-    "rejected": 2,
-    "slaBreached": 1,
-    "todayNew": 0
-  },
-  "bySubjectType": [
-    { "subjectType": "Employee", "count": 30 },
-    { "subjectType": "Contractor", "count": 12 },
-    { "subjectType": "Department", "count": 5 }
-  ]
-}
-```
-
----
-
-## Webhooks API
-
-ระบบสามารถส่ง event แจ้งเตือนออกไปยัง endpoint ที่ลงทะเบียนไว้ได้แบบ real-time
-
-### GET /api/webhooks
-
-ดูรายการ Webhook ที่ลงทะเบียนด้วย API Key นี้
-
-**Scope ที่ต้องการ:** `webhooks:manage`
-
-**ตัวอย่าง Response (200 OK):**
-
-```json
-[
-  {
-    "id": 1,
-    "name": "สถานะเรื่องร้องเรียน",
-    "targetUrl": "https://your-system.example.com/webhook/srt",
-    "isActive": true,
-    "createdAt": "2025-05-01T09:00:00Z",
-    "lastTriggeredAt": "2025-05-28T06:30:00Z",
-    "lastStatusCode": 200,
-    "events": ["complaint.status_changed", "complaint.closed"]
-  }
-]
-```
-
----
-
-### POST /api/webhooks
-
-ลงทะเบียน Webhook endpoint ใหม่
-
-**Scope ที่ต้องการ:** `webhooks:manage`
-
-**Request Body:**
-
-```json
-{
-  "name": "ชื่อ webhook (สำหรับอ้างอิง)",
-  "targetUrl": "https://your-system.example.com/webhook/srt",
-  "events": ["complaint.created", "complaint.status_changed"]
-}
-```
-
-| Field | Type | Required | คำอธิบาย |
-|---|---|---|---|
-| `name` | string | ✅ | ชื่อ webhook (max 200) |
-| `targetUrl` | string | ✅ | URL ที่รับ event (ต้องเป็น HTTPS) |
-| `events` | string[] | ✅ | รายการ events ที่ต้องการรับ (ดูรายการด้านล่าง) |
-
-**ตัวอย่าง Response (201 Created):**
-
-```json
-{
-  "id": 2,
-  "name": "ชื่อ webhook",
-  "targetUrl": "https://your-system.example.com/webhook/srt",
-  "isActive": true,
-  "createdAt": "2025-05-28T07:00:00Z",
-  "events": ["complaint.created"],
-  "secret": "whsec_a1b2c3d4e5f6...",
-  "message": "เก็บ secret นี้ไว้ใช้ยืนยัน signature ของ webhook — จะไม่แสดงอีกครั้ง"
-}
-```
-
-> **สำคัญ:** `secret` จะแสดงครั้งเดียวเท่านั้น — เก็บไว้ใช้ verify HMAC-SHA256 signature
-
----
-
-### DELETE /api/webhooks/{id}
-
-ลบ Webhook
-
-**Scope ที่ต้องการ:** `webhooks:manage`
+### Register
 
 ```http
-DELETE /api/webhooks/2
-X-API-Key: srt_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-```
-
-**Response (200 OK):**
-
-```json
-{
-  "message": "ลบ webhook เรียบร้อยแล้ว"
-}
-```
-
----
-
-## Webhook Events (Outbound)
-
-เมื่อ event เกิดขึ้น ระบบจะส่ง HTTP POST ไปยัง `targetUrl` ที่ลงทะเบียนไว้
-
-### Request Headers ที่ส่งไป
-
-```
+POST /api/v1/webhooks
 Content-Type: application/json
+```
+
+```json
+{
+  "name": "Partner production receiver",
+  "targetUrl": "https://partner.example.com/webhooks/srt",
+  "events": ["complaint.created", "complaint.status_changed", "complaint.closed"]
+}
+```
+
+ข้อกำหนด:
+
+- สูงสุด 10 active webhooks ต่อ API key
+- URL ต้องเป็น HTTPS, ไม่มี userinfo และผ่าน SSRF validation
+- private/loopback/reserved destination ถูกปฏิเสธ เว้นแต่ผู้ดูแลเพิ่ม host ใน allowlist โดยตั้งใจ
+- event ถูก normalize เป็น lowercase และตัดค่าซ้ำ
+- secret แสดงครั้งเดียวใน response `201`; ต้องเก็บใน Secret Manager
+
+### List และ delete
+
+```http
+GET /api/v1/webhooks
+DELETE /api/v1/webhooks/123
+```
+
+การ list และ delete ถูกผูกกับ API key ปัจจุบันแบบ server-side; id ของ key อื่นตอบ `404`
+
+### Outbound delivery
+
+Headers:
+
+```http
 X-SRT-Event: complaint.status_changed
-X-SRT-Signature: sha256=abcdef1234567890...
-X-SRT-Delivery: uuid-xxxxxxxx
+X-SRT-Event-Id: <event-guid>
+X-SRT-Delivery-Id: <delivery-guid>
+X-SRT-Timestamp: <unix-seconds>
+X-SRT-Signature: v1=<lowercase-hex-hmac-sha256>
 ```
 
-### Verify Signature
+Signature input คือ `${timestamp}.${rawRequestBody}` โดยใช้ webhook secret เป็น HMAC-SHA256 key ฝั่งรับควร:
 
-```python
-import hmac, hashlib
+1. ใช้ raw body ก่อน parse JSON
+2. ตรวจ timestamp tolerance ไม่เกิน 5 นาที
+3. เปรียบเทียบ signature แบบ constant time
+4. deduplicate ด้วย Event ID หรือ Delivery ID
+5. ตอบ `2xx` หลังบันทึก event แบบ durable แล้ว
 
-def verify(secret: str, payload: bytes, signature_header: str) -> bool:
-    expected = "sha256=" + hmac.new(
-        secret.encode(), payload, hashlib.sha256
-    ).hexdigest()
-    return hmac.compare_digest(expected, signature_header)
-```
+ระบบไม่ follow redirect, ไม่ใช้ cookie, จำกัด timeout/response body และ revalidate destination ตอน connect เพื่อลด SSRF/DNS rebinding
 
-```csharp
-// C#
-using System.Security.Cryptography;
-using System.Text;
+## Security และ production notes
 
-bool Verify(string secret, byte[] payload, string signatureHeader)
-{
-    var key = Encoding.UTF8.GetBytes(secret);
-    using var hmac = new HMACSHA256(key);
-    var hash = "sha256=" + Convert.ToHexString(hmac.ComputeHash(payload)).ToLower();
-    return CryptographicOperations.FixedTimeEquals(
-        Encoding.UTF8.GetBytes(hash),
-        Encoding.UTF8.GetBytes(signatureHeader));
-}
-```
+- เก็บ API key และ webhook secret ใน Secret Manager; ห้ามใส่ใน URL, source code หรือ application log
+- response API ส่ง `Cache-Control: no-store`
+- production ต้องตั้ง `ApiManagement:Environment`, HTTPS และ `ReverseProxy:KnownProxies`
+- deployment หลาย instance ต้องตั้ง `DistributedRuntime:Mode=MultiInstance`, Redis session cache และ Redis/gateway quota; ระบบ fail startup หาก config ไม่ครบ
+- Data Protection key ring เก็บในฐานข้อมูลร่วมและ Production บังคับ certificate สำหรับเข้ารหัส key at rest; ทุก instance ต้องใช้ `DataProtection:ApplicationName` เดียวกัน
+- ควร alert เมื่อ 401/403/429/5xx เพิ่มขึ้น, webhook retry หมด, outbox ค้าง หรือ key ใกล้หมดอายุ
+- OpenAPI เป็น inventory ของ endpoint ไม่ใช่สิทธิ์เข้าถึงข้อมูลจริง; ทุก endpoint ยังบังคับ API key และ scope
 
----
+## Changelog
 
-### Event: complaint.created
+### 2026-11-03
 
-```json
-{
-  "event": "complaint.created",
-  "occurredAt": "2025-05-28T07:00:00Z",
-  "data": {
-    "referenceNumber": "SRT-COMPL-2568-0042",
-    "status": "Pending",
-    "priority": "Normal",
-    "category": "บริการบนขบวนรถ",
-    "createdAt": "2025-05-28T07:00:00Z",
-    "trackingUrl": "https://www.railway.co.th/complaint/track/SRT-COMPL-2568-0042"
-  }
-}
-```
-
----
-
-### Event: complaint.status_changed
-
-```json
-{
-  "event": "complaint.status_changed",
-  "occurredAt": "2025-05-28T10:00:00Z",
-  "data": {
-    "referenceNumber": "SRT-COMPL-2568-0042",
-    "oldStatus": "Pending",
-    "newStatus": "InProgress",
-    "updatedAt": "2025-05-28T10:00:00Z"
-  }
-}
-```
-
----
-
-### Event: complaint.closed
-
-```json
-{
-  "event": "complaint.closed",
-  "occurredAt": "2025-05-28T15:00:00Z",
-  "data": {
-    "referenceNumber": "SRT-COMPL-2568-0042",
-    "status": "Resolved",
-    "closedAt": "2025-05-28T15:00:00Z",
-    "satisfactionScore": null
-  }
-}
-```
-
----
-
-## ตัวอย่างการใช้งานด้วย cURL
-
-```bash
-# ดูรายละเอียดเรื่องร้องเรียน
-curl -H "X-API-Key: srt_live_xxx" \
-  https://www.railway.co.th/complaint/api/complaints/SRT-COMPL-2568-0001
-
-# สร้างเรื่องร้องเรียนใหม่
-curl -X POST \
-  -H "X-API-Key: srt_live_xxx" \
-  -H "Content-Type: application/json" \
-  -d '{"reporterName":"สมชาย ใจดี","reporterPhone":"0812345678","categoryId":3,"description":"รายละเอียดเรื่องร้องเรียน"}' \
-  https://www.railway.co.th/complaint/api/complaints
-
-# อัปเดตสถานะ
-curl -X PUT \
-  -H "X-API-Key: srt_live_xxx" \
-  -H "Content-Type: application/json" \
-  -d '{"newStatus":"Resolved","note":"ดำเนินการแล้วเสร็จ"}' \
-  https://www.railway.co.th/complaint/api/complaints/SRT-COMPL-2568-0001/status
-
-# ดูสถิติสรุป
-curl -H "X-API-Key: srt_live_xxx" \
-  https://www.railway.co.th/complaint/api/stats/summary
-```
-
----
-
-## Reference Number Format
-
-| Track | Format | ตัวอย่าง |
-|---|---|---|
-| เรื่องร้องเรียนทั่วไป | `SRT-COMPL-{ปีพ.ศ.}-{seq:D4}` | `SRT-COMPL-2568-0042` |
-| เรื่องทุจริต | `SRT-CORUPT-{ปีพ.ศ.}-{seq:D4}` | `SRT-CORUPT-2568-0005` |
-
-ลำดับ (seq) วิ่งต่อเนื่องไม่ reset ตามปี
+- ทำเอกสาร `/api/v1` ให้เป็น canonical และลบ route รุ่นเก่าจากเอกสารหลัก
+- เพิ่ม `workflowStep`, `workflowStepTh`, `workflowUpdatedAt` ใน complaint list/detail/status
+- เพิ่ม response headers `X-RateLimit-Remaining` และ `X-RateLimit-Reset`; `Retry-After` คำนวณตามเวลาคงเหลือจริง
+- ทำ rate-limit bucket ให้ atomic ภายใน instance และแก้ request log ให้บันทึก status ของ `ContentResult` ถูกต้อง
+- ทำ webhook delete โดยใส่ทั้ง webhook id และ API key id ใน ownership predicate ก่อนปิดรายการ พร้อมจำกัด 10 active webhooks ต่อ API key
+- เพิ่ม validation ว่า category/subcategory ต้อง active และสัมพันธ์กัน
+- ทำ error envelope ของ unhandled error, 404, 405 และ 415 ให้เป็น JSON สม่ำเสมอ

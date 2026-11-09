@@ -1,10 +1,18 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@config "../../tailwind.config.js";
+@plugin "@tailwindcss/forms";
+@plugin "flowbite/plugin";
+@source "../../Pages/**/*.cshtml";
+@source "../../Views/**/*.cshtml";
+@source "../../wwwroot/js/**/*.js";
+@source "../../node_modules/flowbite";
+/* Keep compatibility with Razor views already compiled by a running app while
+   the source and generated CSS are updated independently during development. */
+@source inline("max-w-6xl lg:grid-cols-[minmax(0,1fr)_250px] has-[:checked]:bg-blue-50 has-[:checked]:border-srt-navy bg-[radial-gradient(circle_at_15%_20%,rgba(255,255,255,.16),transparent_28%),radial-gradient(circle_at_90%_0%,rgba(245,158,11,.18),transparent_30%)]");
 
 @layer base {
   html {
-    font-family: 'Sarabun', sans-serif;
+    font-family: 'Noto Sans Thai', system-ui, -apple-system, 'Segoe UI', sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
@@ -28,42 +36,62 @@
 
   /* ══ Buttons ══ */
   .btn {
-    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5
-           text-sm font-semibold rounded-xl transition-all duration-200
+    @apply inline-flex min-h-11 items-center justify-center gap-2 px-5 py-2.5
+           whitespace-nowrap text-sm font-semibold leading-5 rounded-lg transition-colors duration-150
            focus:outline-none focus:ring-2 focus:ring-offset-2
            disabled:opacity-50 disabled:cursor-not-allowed select-none;
   }
 
   .btn-primary {
-    @apply btn bg-srt-navy text-white
-           hover:bg-srt-navy-light active:bg-srt-navy-dark
-           focus:ring-srt-navy shadow-sm hover:shadow-glow-navy;
+    @apply inline-flex min-h-11 items-center justify-center gap-2 px-5 py-2.5
+           whitespace-nowrap text-sm font-semibold leading-5 rounded-lg transition-colors duration-150
+           focus:outline-none focus:ring-2 focus:ring-offset-2
+           disabled:opacity-50 disabled:cursor-not-allowed select-none
+           bg-blue-700 text-white
+           hover:bg-blue-800 active:bg-blue-900
+           focus:ring-blue-500 shadow-sm;
   }
 
   .btn-gold {
-    @apply btn bg-srt-gold text-white
+    @apply inline-flex min-h-11 items-center justify-center gap-2 px-5 py-2.5
+           whitespace-nowrap text-sm font-semibold leading-5 rounded-xl transition-all duration-200
+           focus:outline-none focus:ring-2 focus:ring-offset-2
+           disabled:opacity-50 disabled:cursor-not-allowed select-none
+           bg-srt-gold text-white
            hover:bg-srt-gold-light active:bg-srt-gold-dark
            focus:ring-srt-gold shadow-sm;
   }
 
   .btn-secondary {
-    @apply btn bg-white text-srt-navy border border-gray-200
-           hover:border-srt-navy hover:bg-srt-navy/5
-           focus:ring-srt-navy shadow-sm;
+    @apply inline-flex min-h-11 items-center justify-center gap-2 px-5 py-2.5
+           whitespace-nowrap text-sm font-semibold leading-5 rounded-lg transition-colors duration-150
+           focus:outline-none focus:ring-2 focus:ring-offset-2
+           disabled:opacity-50 disabled:cursor-not-allowed select-none
+           bg-white text-slate-700 border border-slate-300
+           hover:bg-slate-50 hover:text-slate-900
+           focus:ring-blue-500 shadow-sm;
   }
 
   .btn-danger {
-    @apply btn bg-red-600 text-white hover:bg-red-700
+    @apply inline-flex min-h-11 items-center justify-center gap-2 px-5 py-2.5
+           whitespace-nowrap text-sm font-semibold leading-5 rounded-xl transition-all duration-200
+           focus:outline-none focus:ring-2 focus:ring-offset-2
+           disabled:opacity-50 disabled:cursor-not-allowed select-none
+           bg-red-600 text-white hover:bg-red-700
            focus:ring-red-500 shadow-sm;
   }
 
   .btn-ghost {
-    @apply btn text-gray-600 hover:bg-gray-100 hover:text-gray-900
+    @apply inline-flex min-h-11 items-center justify-center gap-2 px-5 py-2.5
+           whitespace-nowrap text-sm font-semibold leading-5 rounded-xl transition-all duration-200
+           focus:outline-none focus:ring-2 focus:ring-offset-2
+           disabled:opacity-50 disabled:cursor-not-allowed select-none
+           text-gray-600 hover:bg-gray-100 hover:text-gray-900
            focus:ring-gray-400;
   }
 
   .btn-sm {
-    @apply px-3.5 py-1.5 text-xs rounded-lg;
+    @apply min-h-11 px-4 py-2 text-sm leading-5 rounded-lg;
   }
 
   .btn-lg {
@@ -71,16 +99,19 @@
   }
 
   .btn-icon {
-    @apply btn p-2 rounded-lg;
+    @apply inline-flex min-h-11 min-w-11 items-center justify-center gap-2 text-sm font-semibold
+           transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2
+           disabled:opacity-50 disabled:cursor-not-allowed select-none p-2 rounded-lg;
   }
 
   /* ══ Cards ══ */
   .card {
-    @apply bg-white rounded-2xl border border-gray-100 shadow-card;
+    @apply bg-white rounded-xl border border-slate-200 shadow-sm;
   }
 
   .card-hover {
-    @apply card transition-all duration-200 hover:shadow-card-hover hover:-translate-y-0.5;
+    @apply bg-white rounded-xl border border-slate-200 shadow-sm
+           transition-colors duration-150 hover:border-slate-300;
   }
 
   .card-header {
@@ -92,12 +123,12 @@
   }
 
   .card-glass {
-    @apply bg-white/80 backdrop-blur-sm rounded-2xl border border-white/60 shadow-card;
+    @apply bg-white/95 backdrop-blur-sm rounded-xl border border-slate-200 shadow-sm;
   }
 
   /* ══ Stat Cards ══ */
   .stat-card {
-    @apply card p-5 flex flex-col gap-3;
+    @apply bg-white rounded-xl border border-slate-200 shadow-sm p-5 flex flex-col gap-3;
   }
 
   .stat-card-icon {
@@ -125,19 +156,19 @@
     @apply w-1.5 h-1.5 rounded-full shrink-0;
   }
 
-  .badge-pending  { @apply badge bg-amber-50 text-amber-700 border border-amber-200; }
-  .badge-progress { @apply badge bg-blue-50 text-blue-700 border border-blue-200; }
-  .badge-resolved { @apply badge bg-emerald-50 text-emerald-700 border border-emerald-200; }
-  .badge-closed   { @apply badge bg-gray-100 text-gray-600 border border-gray-200; }
-  .badge-rejected { @apply badge bg-red-50 text-red-700 border border-red-200; }
-  .badge-urgent   { @apply badge bg-orange-50 text-orange-700 border border-orange-200; }
-  .badge-critical { @apply badge bg-red-100 text-red-800 border border-red-300 font-bold; }
+  .badge-pending  { @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200; }
+  .badge-progress { @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200; }
+  .badge-resolved { @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200; }
+  .badge-closed   { @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-600 border border-gray-200; }
+  .badge-rejected { @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-50 text-red-700 border border-red-200; }
+  .badge-urgent   { @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-orange-50 text-orange-700 border border-orange-200; }
+  .badge-critical { @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-800 border border-red-300 font-bold; }
 
-  .priority-low      { @apply badge bg-slate-50 text-slate-600 border border-slate-200; }
-  .priority-normal   { @apply badge bg-blue-50 text-blue-700 border border-blue-200; }
-  .priority-high     { @apply badge bg-orange-50 text-orange-700 border border-orange-200; }
-  .priority-urgent   { @apply badge bg-red-50 text-red-700 border border-red-200; }
-  .priority-critical { @apply badge bg-red-600 text-white border border-red-700; }
+  .priority-low      { @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-50 text-slate-600 border border-slate-200; }
+  .priority-normal   { @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200; }
+  .priority-high     { @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-orange-50 text-orange-700 border border-orange-200; }
+  .priority-urgent   { @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-50 text-red-700 border border-red-200; }
+  .priority-critical { @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-600 text-white border border-red-700; }
 
   /* ══ Form helpers ══ */
   .form-group {
@@ -149,25 +180,56 @@
   }
 
   .form-input {
-    @apply w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm
-           focus:outline-none focus:border-srt-navy focus:ring-2 focus:ring-srt-navy/10
+    @apply w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm
+           focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/15
            transition-colors placeholder:text-gray-400 bg-white;
   }
 
+  .file-input {
+    @apply block min-h-12 w-full min-w-0 cursor-pointer overflow-hidden rounded-xl
+           border border-slate-300 bg-white p-0 text-sm leading-6 text-slate-600
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500
+           focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .file-input::file-selector-button {
+    @apply mr-3 min-h-12 whitespace-nowrap border-0 border-r border-slate-200
+           bg-slate-100 px-4 py-3 text-sm font-semibold leading-6 text-slate-700
+           transition-colors duration-150;
+  }
+
+  .file-input:hover::file-selector-button {
+    @apply bg-slate-200 text-slate-900;
+  }
+
   .form-select {
-    @apply w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm
-           focus:outline-none focus:border-srt-navy focus:ring-2 focus:ring-srt-navy/10
+    @apply w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm
+           focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/15
            transition-colors bg-white;
   }
 
   .form-textarea {
-    @apply w-full border border-gray-200 rounded-xl px-4 py-3 text-sm
-           focus:outline-none focus:border-srt-navy focus:ring-2 focus:ring-srt-navy/10
+    @apply w-full border border-slate-300 rounded-lg px-3 py-3 text-sm
+           focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/15
            transition-colors placeholder:text-gray-400 bg-white resize-none;
   }
 
   .form-error {
     @apply mt-1.5 text-xs text-red-600 flex items-center gap-1;
+  }
+
+  .validation-summary-panel {
+    @apply rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500
+           focus-visible:ring-offset-2;
+  }
+
+  .validation-summary-panel.validation-summary-valid {
+    @apply hidden;
+  }
+
+  .validation-summary-panel ul {
+    @apply list-disc space-y-1 pl-5;
   }
 
   /* Invalid fields get a border + background change, not color-only, so the
@@ -197,11 +259,13 @@
   }
 
   .form-select-compact {
-    @apply form-input-compact;
+    @apply w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white
+           focus:outline-none focus:border-srt-navy transition-colors;
   }
 
   .form-textarea-compact {
-    @apply form-input-compact resize-none;
+    @apply w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white
+           focus:outline-none focus:border-srt-navy transition-colors resize-none;
   }
 
   /* ══ Repeater rows (Admin/HomeContent structured editors) ══ */
@@ -220,10 +284,10 @@
     @apply flex items-start gap-3 rounded-xl p-4 text-sm border;
   }
 
-  .alert-success { @apply alert bg-emerald-50 text-emerald-800 border-emerald-200; }
-  .alert-error   { @apply alert bg-red-50 text-red-800 border-red-200; }
-  .alert-warning { @apply alert bg-amber-50 text-amber-800 border-amber-200; }
-  .alert-info    { @apply alert bg-blue-50 text-blue-800 border-blue-200; }
+  .alert-success { @apply flex items-start gap-3 rounded-xl p-4 text-sm border bg-emerald-50 text-emerald-800 border-emerald-200; }
+  .alert-error   { @apply flex items-start gap-3 rounded-xl p-4 text-sm border bg-red-50 text-red-800 border-red-200; }
+  .alert-warning { @apply flex items-start gap-3 rounded-xl p-4 text-sm border bg-amber-50 text-amber-800 border-amber-200; }
+  .alert-info    { @apply flex items-start gap-3 rounded-xl p-4 text-sm border bg-blue-50 text-blue-800 border-blue-200; }
 
   /* ══ HTMX loading ══ */
   .htmx-indicator { @apply opacity-0 transition-opacity duration-200; }
@@ -232,7 +296,7 @@
 
   /* ══ Page header ══ */
   .page-header {
-    @apply mb-6 flex items-start justify-between gap-4;
+    @apply mb-6 flex flex-col items-start justify-between gap-4 border-b border-slate-200 pb-5 sm:flex-row;
   }
 
   .page-title {
@@ -241,6 +305,23 @@
 
   .page-subtitle {
     @apply text-sm text-gray-500 mt-0.5;
+  }
+
+  .admin-page-eyebrow {
+    @apply mb-1 text-[11px] font-bold uppercase tracking-[0.16em] text-srt-navy-light;
+  }
+
+  .admin-shell main :where(button, a, input, select, textarea):focus-visible {
+    outline: 2px solid #0D2E6E;
+    outline-offset: 2px;
+  }
+
+  .admin-shell main :where(.bg-white.rounded-xl, .card, .stat-card) {
+    transition: border-color 150ms ease, box-shadow 150ms ease;
+  }
+
+  .admin-shell main :where(.bg-white.rounded-xl, .card, .stat-card):hover {
+    border-color: rgb(203 213 225);
   }
 
   /* ══ Section title ══ */
@@ -286,18 +367,33 @@
 
   /* ══ Sidebar nav items ══ */
   .sidebar-link {
-    @apply flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium
-           transition-all duration-150 text-slate-300 hover:text-white hover:bg-white/10;
+    @apply flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium
+           transition-colors duration-150 text-slate-600 hover:text-slate-900 hover:bg-slate-100;
   }
 
   .sidebar-link-active {
-    @apply bg-white/15 text-white shadow-inner-glow;
+    @apply bg-blue-50 text-blue-700 ring-1 ring-blue-100;
+  }
+
+  /* Flowbite-based admin shell navigation */
+  .admin-nav-section {
+    @apply mb-2 px-3 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500;
+  }
+
+  .admin-nav-link {
+    @apply flex min-h-10 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium
+           text-slate-600 transition-colors duration-150 hover:bg-slate-100 hover:text-slate-900
+           focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-white;
+  }
+
+  .admin-nav-link-active {
+    @apply bg-blue-50 text-blue-700 ring-1 ring-blue-100 hover:bg-blue-100 hover:text-blue-800;
   }
 
   /* ══ Collapsible sidebar section header ══ */
   .section-title-btn {
     @apply w-full flex items-center justify-between text-xs font-bold text-gray-400 uppercase tracking-widest
-           px-3 pt-5 pb-1.5 hover:text-slate-200 transition-colors cursor-pointer bg-transparent border-0;
+           px-3 pt-5 pb-1.5 hover:text-slate-700 transition-colors cursor-pointer bg-transparent border-0;
   }
 
   .section-chevron {
@@ -325,7 +421,7 @@
 
   /* ══ Filter bar ══ */
   .filter-bar {
-    @apply bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-5;
+    @apply bg-white rounded-xl border border-slate-200 shadow-sm p-4 mb-5;
   }
 
   /* ══ Empty state ══ */
@@ -348,7 +444,9 @@
 
   /* ══ Action card (quick actions) ══ */
   .action-card {
-    @apply card-hover p-6 flex flex-col gap-4 cursor-pointer;
+    @apply bg-white rounded-xl border border-slate-200 shadow-sm
+           transition-colors duration-150 hover:border-slate-300
+           p-6 flex flex-col gap-4 cursor-pointer;
   }
 
   .action-card-icon {
@@ -435,7 +533,7 @@
   }
   .terms-editor .ql-container.ql-snow {
     @apply rounded-b-xl border-gray-200 text-th-base;
-    font-family: 'Sarabun', sans-serif;
+    font-family: 'Noto Sans Thai', system-ui, -apple-system, 'Segoe UI', sans-serif;
   }
   .terms-editor .ql-editor {
     @apply min-h-[320px];
@@ -473,4 +571,65 @@
   .scrollbar-thin::-webkit-scrollbar { width: 4px; }
   .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
   .scrollbar-thin::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }
+}
+
+/* Flowbite and the forms plugin both register late base rules with square
+   corners. Keep form controls visually consistent across every area of the
+   application by applying the product radius after all cascade layers. */
+:where(
+  input[type='text'],
+  input:not([type]),
+  input[type='email'],
+  input[type='url'],
+  input[type='password'],
+  input[type='number'],
+  input[type='date'],
+  input[type='datetime-local'],
+  input[type='month'],
+  input[type='search'],
+  input[type='tel'],
+  input[type='time'],
+  input[type='week'],
+  select,
+  textarea
+) {
+  border-radius: 0.5rem;
+  min-height: 2.75rem;
+}
+
+/* Shared Flowbite-style application shells. These rules intentionally live
+   after Tailwind layers so legacy utility combinations across Staff/Admin
+   pages inherit the same light navigation and flat surface treatment. */
+.staff-shell #sidebar {
+  background: #ffffff;
+  border-right: 1px solid #e5e7eb;
+  box-shadow: none;
+}
+
+.staff-shell #sidebar > :is(div:first-of-type, div:nth-of-type(2)) {
+  border-color: #e5e7eb;
+}
+
+.staff-shell #sidebar .section-subtitle::after {
+  background: #e5e7eb;
+}
+
+.staff-shell #sidebar .scrollbar-thin,
+.admin-shell .scrollbar-thin {
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+.staff-shell main :where(.bg-white.rounded-xl, .bg-white.rounded-2xl),
+.admin-shell main :where(.bg-white.rounded-xl, .bg-white.rounded-2xl) {
+  border-color: #e2e8f0;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.05);
+}
+
+.flowbite-public {
+  background: #f8fafc;
+}
+
+.flowbite-public main :where(.card, .bg-white.rounded-xl, .bg-white.rounded-2xl) {
+  border-color: #e2e8f0;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.05);
 }

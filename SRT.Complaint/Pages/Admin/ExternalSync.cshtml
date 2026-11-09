@@ -6,6 +6,14 @@
     string[]? parts = syncResult?.Split('|');
 }
 
+<div class="page-header">
+    <div>
+        <p class="admin-page-eyebrow">การเชื่อมต่อระบบ</p>
+        <h1 class="page-title">ดึงคำร้องจากระบบภายนอก</h1>
+        <p class="page-subtitle">นำเข้าคำร้อง ตรวจสอบผลการเชื่อมต่อ และติดตามรายการที่ได้รับจากคู่เชื่อมต่อ</p>
+    </div>
+</div>
+
 <!-- ══ Result Banner ══ -->
 @if (parts != null)
 {
@@ -62,7 +70,7 @@
         <h2 class="text-sm font-semibold text-gray-700">ประวัติการดึงข้อมูล</h2>
     </div>
     <div class="overflow-x-auto">
-        <table class="w-full text-sm">
+        <table class="w-full min-w-[760px] text-sm">
             <thead>
                 <tr class="bg-gray-50 text-xs text-gray-500 font-semibold">
                     <th class="px-4 py-3 text-left">ระบบ</th>

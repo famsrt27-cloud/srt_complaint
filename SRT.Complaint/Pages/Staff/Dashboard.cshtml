@@ -3,254 +3,110 @@
 @{
     ViewData["Title"] = "แดชบอร์ด";
     var stats = Model.Stats;
+    var weeklyTotal = stats.ChartData.Sum();
     var todayChange = stats.YesterdayCount == 0
         ? (stats.TodayCount > 0 ? 100 : 0)
         : (int)Math.Round((double)(stats.TodayCount - stats.YesterdayCount) / stats.YesterdayCount * 100);
-    var changeSign = todayChange >= 0 ? "+" : "";
-    var changeColor = todayChange >= 0 ? "text-emerald-600" : "text-red-500";
+    var changeColor = todayChange >= 0 ? "text-emerald-600" : "text-red-600";
     var changeArrow = todayChange >= 0 ? "↑" : "↓";
+    var maxTotal = stats.CategoryBreakdown.Any() ? stats.CategoryBreakdown.Max(x => x.Total) : 1;
 }
 
-<!-- Page header -->
-<div class="page-header">
-    <div>
-        <h1 class="page-title">แดชบอร์ด</h1>
-        <p class="page-subtitle">ภาพรวมเรื่องร้องเรียน — อัปเดตทุกครั้งที่โหลด</p>
-    </div>
-    <a asp-page="/Staff/Queue" class="btn-primary btn-sm">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-        </svg>
-        คิวเรื่อง
-    </a>
-</div>
-
-<!-- ══ Stat Cards ══ -->
-<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-
-    <div class="stat-card">
-        <div class="flex items-center justify-between">
-            <p class="stat-label">รับวันนี้</p>
-            <div class="stat-card-icon bg-srt-navy-50">
-                <svg class="w-5 h-5 text-srt-navy" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-            </div>
-        </div>
-        <p class="stat-value text-srt-navy">@stats.TodayCount</p>
-        <p class="stat-meta">
-            <span class="@changeColor font-semibold">@changeArrow @changeSign@todayChange%</span>
-            <span class="ml-1">จากเมื่อวาน</span>
-        </p>
-    </div>
-
-    <div class="stat-card">
-        <div class="flex items-center justify-between">
-            <p class="stat-label">กำลังดำเนินการ</p>
-            <div class="stat-card-icon bg-blue-50">
-                <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-            </div>
-        </div>
-        <p class="stat-value text-blue-600">@stats.InProgressCount</p>
-        <p class="stat-meta">
-            รับแล้ว <strong class="text-gray-700">@stats.AssignedCount</strong> ·
-            <span class="text-amber-600 font-semibold">รอรับ @stats.UnassignedCount</span>
-        </p>
-    </div>
-
-    <div class="stat-card border-amber-100">
-        <div class="flex items-center justify-between">
-            <p class="stat-label text-amber-600">ใกล้ครบ SLA</p>
-            <div class="stat-card-icon bg-amber-50">
-                <svg class="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-            </div>
-        </div>
-        <p class="stat-value text-amber-600">@stats.SlaWarningCount</p>
-        <p class="stat-meta text-amber-500">เหลือน้อยกว่า 24 ชั่วโมง</p>
-    </div>
-
-    <div class="stat-card @(stats.SlaBreachedCount > 0 ? "border-red-200 bg-red-50" : "")">
-        <div class="flex items-center justify-between">
-            <p class="stat-label @(stats.SlaBreachedCount > 0 ? "text-red-600" : "")">เกิน SLA</p>
-            <div class="stat-card-icon @(stats.SlaBreachedCount > 0 ? "bg-red-100" : "bg-gray-100")">
-                <svg class="w-5 h-5 @(stats.SlaBreachedCount > 0 ? "text-red-600" : "text-gray-500")"
-                     fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-            </div>
-        </div>
-        <p class="stat-value text-red-600">@stats.SlaBreachedCount</p>
-        @if (stats.SlaBreachedCount > 0)
-        {
-            <p class="stat-meta text-red-500 font-semibold">ต้องดำเนินการด่วน</p>
-        }
-        else
-        {
-            <p class="stat-meta text-emerald-500">สถานะปกติ</p>
-        }
-    </div>
-
-</div>
-
-<!-- ══ Chart + Category + SLA Warning ══ -->
-<div class="grid grid-cols-1 lg:grid-cols-4 gap-5 mb-5">
-
-    <!-- Bar Chart -->
-    <div class="lg:col-span-2 card p-5">
-        <div class="flex items-center justify-between mb-5">
-            <div>
-                <h2 class="text-sm font-bold text-gray-900">จำนวนเรื่องร้องเรียน 7 วันล่าสุด</h2>
-                <p class="text-xs text-gray-400 mt-0.5">อัปเดตทุกครั้งที่โหลดหน้า</p>
-            </div>
-            <span class="badge-pending text-xs">7 วัน</span>
-        </div>
-        <canvas id="weeklyChart" height="85"></canvas>
-    </div>
-
-    <!-- Category Breakdown -->
-    @{
-        var maxTotal = stats.CategoryBreakdown.Any() ? stats.CategoryBreakdown.Max(x => x.Total) : 1;
-    }
-    <div class="card p-5">
-        <h2 class="text-sm font-bold text-gray-900 mb-3">แยกตามประเภท</h2>
-        @if (stats.CategoryBreakdown.Any())
-        {
-            <div class="space-y-2.5">
-                @foreach (var item in stats.CategoryBreakdown)
-                {
-                    var pct = maxTotal > 0 ? (double)item.Total / maxTotal * 100 : 0;
-                    var pctActive = item.Total > 0 ? (double)item.Active / item.Total * 100 : 0;
-                    <div>
-                        <div class="flex justify-between text-xs mb-1">
-                            <span class="text-gray-600 truncate max-w-[75%]">@item.CategoryName</span>
-                            <span class="font-semibold text-gray-800 shrink-0">@item.Total</span>
-                        </div>
-                        <div class="w-full h-1.5 rounded-full overflow-hidden" style="background:#EEF2FF;">
-                            <div class="h-1.5 rounded-full relative overflow-hidden" style="width:@pct.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)%; background:#C7D2FE;">
-                                <div class="absolute inset-y-0 left-0 rounded-full" style="width:@pctActive.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)%; background:#0D2E6E;"></div>
-                            </div>
-                        </div>
-                    </div>
-                }
-            </div>
-            <p class="text-[10px] text-gray-400 mt-3">สีเข้ม = กำลังดำเนินการ</p>
-        }
-        else
-        {
-            <p class="text-xs text-gray-400">ยังไม่มีข้อมูล</p>
-        }
-    </div>
-
-    <!-- SLA Warning List -->
-    <div class="card p-5 border-amber-100">
-        <h2 class="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
-            <div class="w-5 h-5 bg-amber-100 rounded-lg flex items-center justify-center shrink-0">
-                <svg class="w-3 h-3 text-amber-600" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
-                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd" />
-                </svg>
-            </div>
-            เรื่องใกล้ครบ / เกิน SLA
-        </h2>
-
-        @if (!stats.SlaWarningItems.Any())
-        {
-            <div class="empty-state py-8">
-                <div class="empty-state-icon bg-emerald-50 mb-3">
-                    <svg class="w-7 h-7 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                </div>
-                <p class="text-sm font-medium text-gray-500">SLA ปกติทุกเรื่อง</p>
-                <p class="text-xs text-gray-400 mt-1">ไม่มีเรื่องที่ใกล้เกิน SLA</p>
-            </div>
-        }
-        else
-        {
-            <div class="space-y-2 max-h-60 overflow-y-auto pr-1">
-                @foreach (var item in stats.SlaWarningItems)
-                {
-                    <a asp-page="/Staff/CaseDetail" asp-route-id="@item.Id"
-                       class="flex items-center gap-3 p-3 rounded-xl border transition-all duration-150
-                              @(item.SlaBreached ? "bg-red-50 border-red-200 hover:border-red-300" : "bg-amber-50 border-amber-100 hover:border-amber-200")">
-                        <div class="flex-1 min-w-0">
-                            <p class="text-xs font-bold text-gray-900 font-mono">@item.ReferenceNumber</p>
-                            <p class="text-xs text-gray-500 truncate mt-0.5">@item.CategoryName</p>
-                        </div>
-                        <div class="text-right shrink-0">
-                            <p class="text-xs font-bold @(item.SlaBreached ? "text-red-600" : "text-amber-600")">
-                                @item.SlaRemainingText
-                            </p>
-                            <p class="text-[10px] text-gray-400 mt-0.5">@item.ReporterName</p>
-                        </div>
-                    </a>
-                }
-            </div>
-        }
-    </div>
-
-</div>
-
-<!-- ══ Quick link to Workload ══ -->
-<div class="card p-5 flex items-center justify-between">
-    <div class="flex items-center gap-3">
-        <div class="w-9 h-9 bg-srt-navy-50 rounded-xl flex items-center justify-center shrink-0">
-            <svg class="w-5 h-5 text-srt-navy" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                      d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0" />
-            </svg>
-        </div>
+<div class="mx-auto max-w-[1600px]">
+    <div class="page-header">
         <div>
-            <h2 class="text-sm font-bold text-gray-900">Workload ทีมเจ้าหน้าที่</h2>
-            <p class="text-xs text-gray-400 mt-0.5">ดูภาระงานและสถิติของแต่ละคน</p>
+            <p class="mb-1 text-xs font-semibold uppercase tracking-wider text-blue-700">Operations overview</p>
+            <h1 id="dashboard-title" class="page-title">แดชบอร์ดเรื่องร้องเรียน</h1>
+            <p class="page-subtitle">ติดตามงานใหม่ ภาระงาน และ SLA จากหน้าจอเดียว</p>
+        </div>
+        <div class="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+            <a asp-page="/Staff/CreateComplaint" class="btn-primary"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" /></svg>สร้างเรื่องใหม่</a>
+            <a asp-page="/Staff/Queue" class="btn-secondary">ดูคิวทั้งหมด</a>
         </div>
     </div>
-    <a asp-page="/Staff/Workload" class="btn-secondary btn-sm">
-        ดูทั้งหมด
-        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-        </svg>
-    </a>
+
+    <section class="mb-5 grid grid-cols-1 gap-5 xl:grid-cols-12" aria-labelledby="weekly-heading">
+        <div class="card p-5 sm:p-6 xl:col-span-8">
+            <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                    <div class="flex items-center gap-2"><h2 id="weekly-heading" class="text-base font-semibold text-slate-900">ปริมาณเรื่องร้องเรียน</h2><span class="rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">7 วันล่าสุด</span></div>
+                    <div class="mt-3 flex items-end gap-3"><span class="text-3xl font-bold tracking-tight text-slate-900">@weeklyTotal</span><span class="pb-1 text-sm text-slate-500">เรื่องทั้งหมดในช่วงนี้</span></div>
+                </div>
+                <p class="text-xs text-slate-400">อัปเดตอัตโนมัติทุก 60 วินาที</p>
+            </div>
+            <div class="h-72"><canvas id="weeklyChart" role="img" aria-label="กราฟเส้นแสดงจำนวนเรื่องร้องเรียนรายวันย้อนหลัง 7 วัน"></canvas></div>
+        </div>
+
+        <div class="grid gap-4 sm:grid-cols-2 xl:col-span-4 xl:grid-cols-1">
+            <a asp-page="/Staff/Queue" asp-route-status="Pending" class="card flex items-center justify-between p-5 transition-colors hover:border-blue-300">
+                <div><p class="text-sm font-medium text-slate-500">เรื่องใหม่วันนี้</p><p class="mt-2 text-3xl font-bold text-slate-900">@stats.TodayCount</p><p class="mt-1 text-xs text-slate-500"><span class="font-semibold @changeColor">@changeArrow @Math.Abs(todayChange)%</span> จากเมื่อวาน</p></div>
+                <span class="flex h-11 w-11 items-center justify-center rounded-lg bg-blue-50 text-blue-700"><svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.6L19 9.4V19a2 2 0 01-2 2Z" /></svg></span>
+            </a>
+            <a asp-page="/Staff/Queue" class="card flex items-center justify-between p-5 transition-colors hover:border-blue-300">
+                <div><p class="text-sm font-medium text-slate-500">กำลังดำเนินการ</p><p class="mt-2 text-3xl font-bold text-slate-900">@stats.InProgressCount</p><p class="mt-1 text-xs text-slate-500">รับแล้ว @stats.AssignedCount · รอรับ @stats.UnassignedCount</p></div>
+                <span class="flex h-11 w-11 items-center justify-center rounded-lg bg-indigo-50 text-indigo-700"><svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h5M20 20v-5h-5M5.6 15A8 8 0 0019 9M5 9a8 8 0 0013.4 6" /></svg></span>
+            </a>
+            <a asp-page="/Staff/Queue" class="card flex items-center justify-between p-5 transition-colors hover:border-amber-300">
+                <div><p class="text-sm font-medium text-slate-500">ใกล้ครบ SLA</p><p class="mt-2 text-3xl font-bold text-amber-600">@stats.SlaWarningCount</p><p class="mt-1 text-xs text-slate-500">ตามเกณฑ์ของแต่ละระดับความสำคัญ</p></div>
+                <span class="flex h-11 w-11 items-center justify-center rounded-lg bg-amber-50 text-amber-700"><svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0Z" /></svg></span>
+            </a>
+            <a asp-page="/Staff/Queue" class="card flex items-center justify-between p-5 transition-colors @(stats.SlaBreachedCount > 0 ? "border-red-200 bg-red-50/30 hover:border-red-300" : "hover:border-emerald-300")">
+                <div><p class="text-sm font-medium text-slate-500">เกิน SLA</p><p class="mt-2 text-3xl font-bold @(stats.SlaBreachedCount > 0 ? "text-red-600" : "text-emerald-600")">@stats.SlaBreachedCount</p><p class="mt-1 text-xs @(stats.SlaBreachedCount > 0 ? "font-medium text-red-600" : "text-slate-500")">@(stats.SlaBreachedCount > 0 ? "ต้องดำเนินการด่วน" : "สถานะปกติ")</p></div>
+                <span class="flex h-11 w-11 items-center justify-center rounded-lg @(stats.SlaBreachedCount > 0 ? "bg-red-100 text-red-700" : "bg-emerald-50 text-emerald-700")"><svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3m0 4h.01M10.3 4.5 2.8 18a2 2 0 001.8 3h14.8a2 2 0 001.8-3L13.7 4.5a2 2 0 00-3.4 0Z" /></svg></span>
+            </a>
+        </div>
+    </section>
+
+    <section class="grid grid-cols-1 gap-5 xl:grid-cols-12">
+        <div class="card xl:col-span-5">
+            <div class="card-header"><div><h2 class="text-base font-semibold text-slate-900">ประเภทเรื่องที่พบบ่อย</h2><p class="mt-0.5 text-xs text-slate-500">เปรียบเทียบจำนวนรวมและงานที่กำลังดำเนินการ</p></div></div>
+            <div class="card-body">
+                @if (stats.CategoryBreakdown.Any())
+                {
+                    <div class="space-y-4">
+                        @foreach (var item in stats.CategoryBreakdown)
+                        {
+                            var pct = maxTotal > 0 ? (double)item.Total / maxTotal * 100 : 0;
+                            var pctActive = item.Total > 0 ? (double)item.Active / item.Total * 100 : 0;
+                            <div><div class="mb-1.5 flex justify-between gap-4 text-sm"><span class="truncate text-slate-600">@item.CategoryName</span><span class="font-semibold text-slate-900">@item.Total</span></div><div class="h-2 overflow-hidden rounded-full bg-slate-100"><div class="relative h-2 rounded-full bg-blue-100" style="width:@pct.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)%"><div class="absolute inset-y-0 left-0 rounded-full bg-blue-700" style="width:@pctActive.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)%"></div></div></div></div>
+                        }
+                    </div>
+                    <p class="mt-4 text-xs text-slate-400">สีน้ำเงินเข้ม = กำลังดำเนินการ</p>
+                }
+                else { <p class="py-10 text-center text-sm text-slate-400">ยังไม่มีข้อมูล</p> }
+            </div>
+        </div>
+
+        <div class="card xl:col-span-7">
+            <div class="card-header"><div><h2 class="text-base font-semibold text-slate-900">เรื่องที่ต้องติดตาม SLA</h2><p class="mt-0.5 text-xs text-slate-500">เรียงลำดับงานเร่งด่วนที่ควรจัดการก่อน</p></div><a asp-page="/Staff/Queue" class="text-sm font-medium text-blue-700 hover:text-blue-800">ดูทั้งหมด</a></div>
+            @if (!stats.SlaWarningItems.Any())
+            {
+                <div class="empty-state py-12"><span class="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50 text-emerald-600"><svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m5 13 4 4L19 7" /></svg></span><p class="font-medium text-slate-700">SLA ปกติทุกเรื่อง</p><p class="mt-1 text-sm text-slate-400">ยังไม่มีงานที่ใกล้หรือเกินกำหนด</p></div>
+            }
+            else
+            {
+                <div class="divide-y divide-slate-100">
+                    @foreach (var item in stats.SlaWarningItems)
+                    {
+                        <a asp-page="/Staff/CaseDetail" asp-route-id="@item.Id" class="flex items-center gap-4 px-5 py-4 transition-colors hover:bg-slate-50 sm:px-6"><span class="h-2.5 w-2.5 shrink-0 rounded-full @(item.SlaBreached ? "bg-red-500" : "bg-amber-400")"></span><div class="min-w-0 flex-1"><p class="truncate text-sm font-semibold text-slate-900">@item.ReferenceNumber · @item.CategoryName</p><p class="mt-0.5 truncate text-xs text-slate-500">ผู้ร้อง: @item.ReporterName</p></div><span class="shrink-0 text-xs font-semibold @(item.SlaBreached ? "text-red-600" : "text-amber-600")">@item.SlaRemainingText</span><svg class="h-4 w-4 shrink-0 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m9 18 6-6-6-6" /></svg></a>
+                    }
+                </div>
+            }
+        </div>
+    </section>
+
 </div>
 
 @section Scripts {
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
     <script>
     (function () {
-        const ctx = document.getElementById('weeklyChart');
-        if (!ctx) return;
-        new Chart(ctx, {
-            type: 'bar',
-            data: {
-                labels: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.Stats.ChartLabels)),
-                datasets: [{
-                    label: 'จำนวนเรื่อง',
-                    data: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.Stats.ChartData)),
-                    backgroundColor: (ctx2) => {
-                        const gradient = ctx2.chart.ctx.createLinearGradient(0, 0, 0, 200);
-                        gradient.addColorStop(0, 'rgba(13,46,110,0.85)');
-                        gradient.addColorStop(1, 'rgba(13,46,110,0.25)');
-                        return gradient;
-                    },
-                    borderRadius: 8,
-                    borderSkipped: false,
-                }]
-            },
-            options: {
-                responsive: true,
-                plugins: { legend: { display: false },
-                    tooltip: { callbacks: { label: ctx => ` ${ctx.parsed.y} เรื่อง` } }
-                },
-                scales: {
-                    y: { beginAtZero: true, ticks: { precision: 0 },
-                         grid: { color: 'rgba(0,0,0,0.05)' },
-                         border: { display: false } },
-                    x: { grid: { display: false }, border: { display: false } }
-                }
-            }
+        const canvas = document.getElementById('weeklyChart');
+        if (!canvas) return;
+        new Chart(canvas, {
+            type: 'line',
+            data: { labels: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.Stats.ChartLabels)), datasets: [{ label: 'จำนวนเรื่อง', data: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.Stats.ChartData)), borderColor: '#1d4ed8', backgroundColor: 'rgba(37, 99, 235, .10)', pointBackgroundColor: '#fff', pointBorderColor: '#1d4ed8', pointBorderWidth: 2, pointRadius: 3, pointHoverRadius: 5, borderWidth: 3, fill: true, tension: .38 }] },
+            options: { responsive: true, maintainAspectRatio: false, interaction: { intersect: false, mode: 'index' }, plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${ctx.parsed.y} เรื่อง` } } }, scales: { y: { beginAtZero: true, ticks: { precision: 0, color: '#64748b' }, grid: { color: 'rgba(148,163,184,.18)' }, border: { display: false } }, x: { ticks: { color: '#64748b' }, grid: { display: false }, border: { display: false } } } }
         });
         setTimeout(() => location.reload(), 60000);
     })();

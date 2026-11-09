@@ -1,13 +1,15 @@
-@model SRT.Complaint.Models.ComplaintTerms?
+@model SRT.Complaint.Models.TermsModalViewModel
 
-@if (Model is { IsActive: true })
+@if (Model.Terms is { IsActive: true } terms && Model.Show)
 {
     <div id="terms-overlay"
          class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
          role="dialog"
          aria-modal="true"
-         aria-labelledby="terms-title">
-        <div class="bg-white rounded-2xl shadow-2xl w-full mx-auto flex flex-col"
+         aria-labelledby="terms-title"
+         aria-describedby="terms-description"
+         tabindex="-1">
+        <div class="bg-white rounded-2xl shadow-2xl w-full mx-auto flex flex-col overscroll-contain"
              style="max-width: 680px; max-height: 88vh;">
 
             <!-- Header -->
@@ -19,39 +21,52 @@
                     </svg>
                 </div>
                 <div class="min-w-0">
-                    <h2 id="terms-title" class="text-base font-bold text-gray-900">@Model.Title</h2>
-                    <p class="text-xs text-gray-500 mt-0.5">กรุณาอ่านและยอมรับก่อนดำเนินการยื่นเรื่อง</p>
+                    <h2 id="terms-title"
+                        class="text-base font-bold text-gray-900 focus:outline-none"
+                        tabindex="-1">@terms.Title</h2>
+                    <p id="terms-description" class="text-xs text-gray-500 mt-0.5">กรุณาอ่านและยอมรับก่อนดำเนินการยื่นเรื่อง</p>
                 </div>
             </div>
 
             <!-- Scrollable content -->
-            <div class="terms-content flex-1 overflow-y-auto px-6 py-5">
-                @Html.Raw(Model.Content)
+            <div id="terms-content"
+                 class="terms-content flex-1 overflow-y-auto px-6 py-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-srt-navy/30"
+                 tabindex="0">
+                @Html.Raw(terms.Content)
             </div>
 
             <!-- Footer -->
             <div class="px-6 py-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl shrink-0">
                 <label class="flex items-start gap-3 cursor-pointer mb-4 select-none">
-                    <input type="checkbox"
-                           id="terms-checkbox"
-                           class="mt-0.5 w-4 h-4 rounded border-gray-300 text-srt-navy cursor-pointer"
-                           onchange="document.getElementById('terms-accept-btn').disabled = !this.checked" />
+                    @Html.CheckBox(
+                        "Input.AcceptedTerms",
+                        Model.AcceptedTerms,
+                        new {
+                            form = Model.FormId,
+                            id = "terms-checkbox",
+                            @class = "mt-0.5 w-4 h-4 rounded border-gray-300 text-srt-navy cursor-pointer",
+                            onchange = "document.getElementById('terms-accept-btn').disabled = !this.checked"
+                        })
                     <span class="text-sm text-gray-700">
                         ข้าพเจ้าได้อ่านและ<strong class="text-gray-900">ยอมรับหลักเกณฑ์การรับเรื่องร้องเรียน</strong>ของการรถไฟแห่งประเทศไทยทุกข้อ
                     </span>
                 </label>
+                <p class="text-xs text-gray-500 mb-3">
+                    เมื่อยื่นเรื่อง ระบบจะบันทึกเลขหลักฐาน เวอร์ชันข้อความ และวันเวลาที่ท่านยอมรับไว้กับเลขเรื่องเพื่อการตรวจสอบย้อนหลัง
+                </p>
+                @Html.ValidationMessage("Input.AcceptedTerms", null, new { @class = "form-error block mb-3", role = "alert" })
                 <div class="flex gap-3">
-                    <a href="/"
-                       class="flex-1 text-center px-4 py-2.5 border border-gray-300 text-gray-700 text-sm
-                              font-medium rounded-xl hover:bg-gray-100 transition">
+                    <a href="/" id="terms-cancel-link"
+                       class="flex min-h-11 flex-1 items-center justify-center px-4 py-2.5 text-center border border-gray-300 text-gray-700 text-sm
+                              font-medium rounded-xl hover:bg-gray-100 transition-colors">
                         ยกเลิก / กลับหน้าแรก
                     </a>
                     <button type="button"
                             id="terms-accept-btn"
-                            disabled
+                            disabled="@(!Model.AcceptedTerms)"
                             onclick="onTermsAccepted()"
-                            class="flex-1 px-4 py-2.5 bg-srt-navy text-white text-sm font-semibold rounded-xl
-                                   transition disabled:opacity-40 disabled:cursor-not-allowed
+                            class="min-h-11 flex-1 px-4 py-2.5 bg-srt-navy text-white text-sm font-semibold rounded-xl
+                                   transition-colors disabled:opacity-40 disabled:cursor-not-allowed
                                    enabled:hover:bg-blue-900">
                         <svg class="w-4 h-4 inline mr-1.5 -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
@@ -65,12 +80,40 @@
 
     <script>
         function onTermsAccepted() {
-            document.getElementById('terms-overlay').style.display = 'none';
+            const overlay = document.getElementById('terms-overlay');
+            overlay.hidden = true;
             var wrapper = document.getElementById('form-content-wrapper');
             if (wrapper) {
                 wrapper.classList.remove('hidden');
-                wrapper.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+                wrapper.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
+                wrapper.querySelector('input:not([type="hidden"]), select, textarea, button')?.focus();
             }
         }
+
+        (function () {
+            const overlay = document.getElementById('terms-overlay');
+            if (!overlay) return;
+            document.getElementById('terms-title')?.focus({ preventScroll: true });
+            overlay.addEventListener('keydown', event => {
+                if (event.key === 'Escape') {
+                    event.preventDefault();
+                    document.getElementById('terms-cancel-link')?.focus();
+                    return;
+                }
+                if (event.key !== 'Tab') return;
+                const focusable = Array.from(overlay.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), [tabindex="0"]'));
+                if (!focusable.length) return;
+                const first = focusable[0];
+                const last = focusable[focusable.length - 1];
+                if (event.shiftKey && document.activeElement === first) {
+                    event.preventDefault();
+                    last.focus();
+                } else if (!event.shiftKey && document.activeElement === last) {
+                    event.preventDefault();
+                    first.focus();
+                }
+            });
+        })();
     </script>
 }

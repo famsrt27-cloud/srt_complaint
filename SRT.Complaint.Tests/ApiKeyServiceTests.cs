@@ -71,6 +71,23 @@ public class ApiKeyServiceTests
         Assert.Null(validated);
     }
 
+    [Fact]
+    public async Task ExternalKeyCannotReceiveComplaintUpdateScope()
+    {
+        await using var db = TestHelpers.CreateAppDbContext();
+        db.Partners.Add(new Partner { Id = 13, Code = "EDOC2", Name = "eDOC 2", IsActive = true });
+        await db.SaveChangesAsync();
+        var service = CreateService(db, "Production");
+
+        var action = () => service.CreateAsync(new CreateApiKeyRequest(
+            13, "eDOC status writer", "External", "Production", "Own", null,
+            ["complaints:read", "complaints:update"], 60, null,
+            DateTime.UtcNow.AddDays(30), 1));
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(action);
+        Assert.Contains("complaints:update", exception.Message);
+    }
+
     private static ApiKeyService CreateService(Data.AppDbContext db, string environment)
     {
         var configuration = new ConfigurationBuilder()

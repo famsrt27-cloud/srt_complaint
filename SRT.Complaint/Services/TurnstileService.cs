@@ -6,6 +6,7 @@ namespace SRT.Complaint.Services;
 public class TurnstileService(
     IHttpClientFactory httpClientFactory,
     IConfiguration config,
+    IWebHostEnvironment environment,
     ILogger<TurnstileService> logger) : ITurnstileService
 {
     private const string VerifyUrl = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
@@ -14,11 +15,18 @@ public class TurnstileService(
     {
         var secretKey = config["Turnstile:SecretKey"] ?? "";
 
-        // Dev mode: no key configured → skip verification
+        // Local development may intentionally run without credentials. Any
+        // deployed environment fails closed when the secret is missing.
         if (string.IsNullOrWhiteSpace(secretKey))
         {
-            logger.LogWarning("Turnstile SecretKey not configured — skipping verification (dev mode)");
-            return true;
+            if (environment.IsDevelopment())
+            {
+                logger.LogWarning("Turnstile SecretKey not configured — skipping verification in Development only");
+                return true;
+            }
+
+            logger.LogError("Turnstile SecretKey is not configured; verification is unavailable");
+            return false;
         }
 
         if (string.IsNullOrWhiteSpace(token))

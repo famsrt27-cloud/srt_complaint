@@ -2,12 +2,12 @@
 @model SRT.Complaint.Pages.Admin.WebhooksModel
 @{
     ViewData["Title"] = "Webhooks";
-    Layout = "_StaffLayout";
+    Layout = "_AdminLayout";
 }
 
 @if (TempData["Success"] != null)
 {
-    <div class="bg-green-50 border border-green-200 rounded-xl p-4 mb-5 text-green-800 text-sm font-medium">@TempData["Success"]</div>
+    <div hidden data-swal-toast="success">@TempData["Success"]</div>
 }
 
 <div class="flex items-center justify-between mb-5">
@@ -17,9 +17,36 @@
     </div>
 </div>
 
+<details class="mb-6 rounded-xl border border-slate-200 bg-white shadow-sm">
+    <summary class="cursor-pointer list-none px-5 py-4 text-sm font-semibold text-srt-navy">+ เพิ่ม Webhook</summary>
+    <form method="post" asp-page-handler="Create" class="grid grid-cols-1 gap-4 border-t border-slate-200 p-5 lg:grid-cols-2">
+        @Html.AntiForgeryToken()
+        <div><label for="webhook-name" class="form-label">ชื่อ <span class="text-red-600">*</span></label><input id="webhook-name" name="NewName" required maxlength="200" class="form-input" placeholder="เช่น ระบบรับเรื่องส่วนกลาง" /></div>
+        <div><label for="webhook-key" class="form-label">API Key เจ้าของ <span class="text-red-600">*</span></label><select id="webhook-key" name="NewApiKeyId" required class="form-select"><option value="">-- เลือก API Key --</option>@foreach (var key in Model.ApiKeys) { <option value="@key.Id">@key.Partner.Name — @key.Name (@key.KeyPrefix)</option> }</select></div>
+        <div class="lg:col-span-2"><label for="webhook-url" class="form-label">ปลายทาง HTTPS <span class="text-red-600">*</span></label><input id="webhook-url" name="NewTargetUrl" type="url" required maxlength="1000" class="form-input" placeholder="https://partner.example.com/webhooks/srt" /></div>
+        <fieldset class="lg:col-span-2"><legend class="form-label">เหตุการณ์ <span class="text-red-600">*</span></legend><div class="flex flex-wrap gap-4">@foreach (var evt in new[] { "complaint.created", "complaint.status_changed", "complaint.closed" }) { <label class="inline-flex min-h-11 items-center gap-2"><input type="checkbox" name="NewEvents" value="@evt" class="rounded border-slate-300 text-srt-navy" /><span class="font-mono text-xs">@evt</span></label> }</div></fieldset>
+        <div class="lg:col-span-2 flex justify-end"><button type="submit" class="btn-primary">สร้าง Webhook</button></div>
+    </form>
+</details>
+
+@if (TempData["WebhookSecret"] is string webhookSecret)
+{
+    var webhookName = TempData["WebhookName"] as string ?? "Webhook";
+    <script>
+        document.addEventListener('DOMContentLoaded', () => window.SrtDialog.secret({
+            title: 'Webhook signing secret',
+            value: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(webhookSecret)),
+            target: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(webhookName)),
+            expires: 'แสดงเพียงครั้งเดียว กรุณาเก็บใน Secret Manager',
+            description: 'ใช้ secret นี้เพื่อตรวจสอบลายเซ็น X-SRT-Signature ที่ปลายทาง',
+            copyText: 'คัดลอก signing secret'
+        }));
+    </script>
+}
+
 <!-- Webhooks Table -->
 <div class="overflow-x-auto rounded-xl border border-gray-200 shadow-sm bg-white mb-6">
-    <table class="w-full text-sm border-collapse">
+    <table class="w-full min-w-[1000px] text-sm border-collapse">
         <thead>
             <tr class="bg-gray-50 text-gray-600 text-left text-xs">
                 <th class="px-4 py-3 font-semibold border-b border-gray-200">ชื่อ</th>
@@ -88,7 +115,8 @@
                     </td>
                     <td class="px-4 py-3 text-right">
                         <form method="post" asp-page-handler="Delete"
-                              onsubmit="return confirm('ลบ Webhook นี้?')">
+                              data-confirm="ยืนยันลบ Webhook นี้? ระบบจะหยุดส่งเหตุการณ์ไปยังปลายทางทันที"
+                              data-confirm-title="ลบ Webhook" data-confirm-text="ลบ" data-confirm-danger="true">
                             @Html.AntiForgeryToken()
                             <input type="hidden" name="DeleteId" value="@wh.Id" />
                             <button type="submit"

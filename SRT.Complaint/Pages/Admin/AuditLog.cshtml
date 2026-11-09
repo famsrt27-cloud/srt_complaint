@@ -4,9 +4,17 @@
     ViewData["Title"] = "Audit Log";
 }
 
+<div class="page-header">
+    <div>
+        <p class="admin-page-eyebrow">ความปลอดภัยและการตรวจสอบ</p>
+        <h1 class="page-title">Audit Log</h1>
+        <p class="page-subtitle">ตรวจสอบกิจกรรมสำคัญ ผู้ดำเนินการ และรายการเปลี่ยนแปลงในระบบ</p>
+    </div>
+</div>
+
 <!-- ══ Filter Bar ══ -->
 <form method="get" class="bg-white rounded-xl border border-gray-200 shadow-sm p-4 mb-5">
-    <div class="grid grid-cols-2 lg:grid-cols-5 gap-3">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
         <div>
             <label class="block text-xs font-medium text-gray-600 mb-1">Action</label>
             <input name="actionFilter" value="@Model.ActionFilter" placeholder="เช่น CreateStaffUser"
@@ -82,7 +90,7 @@
 
 <!-- ══ Log Table ══ -->
 <div class="overflow-x-auto rounded-xl border border-gray-200 shadow-sm bg-white mb-4">
-    <table class="w-full text-sm border-collapse">
+    <table class="w-full min-w-[900px] text-sm border-collapse">
         <thead>
             <tr class="bg-gray-50 text-gray-600 text-left text-xs">
                 <th class="px-4 py-3 font-semibold border-b border-gray-200 whitespace-nowrap">เวลา</th>

@@ -10,7 +10,9 @@ public class CorruptionService(
     IMaskingService masking,
     ISlaService slaService,
     INotificationService notificationService,
-    IAuditService auditService) : ICorruptionService
+    IAuditService auditService,
+    IConfiguration config,
+    AppDbContext appDb) : ICorruptionService
 {
     public async Task<CorruptionReport> SubmitAsync(SubmitCorruptionRequest request, CancellationToken ct = default)
     {
@@ -42,6 +44,8 @@ public class CorruptionService(
         db.Reports.Add(report);
         await db.SaveChangesAsync(ct);
 
+        await SaveAttachmentsAsync(report, request.Attachments, ct);
+
         await auditService.LogAsync("CorruptionReportSubmitted", null, null, "CorruptionReport", report.Id.ToString(), new { refNum }, null, ct);
 
         await notificationService.SendAsync("ComplaintReceived", request.ReporterPhone, request.ReporterEmail, new()
@@ -60,23 +64,41 @@ public class CorruptionService(
         => await db.Reports
             .Include(r => r.InvestigationLogs)
             .Include(r => r.DecryptionLogs)
+            .Include(r => r.Attachments)
             .FirstOrDefaultAsync(r => r.Id == id, ct);
 
     public async Task UpdateStatusAsync(int id, string newStatus, int actorId, string? note, CancellationToken ct = default)
     {
         var report = await db.Reports.FindAsync([id], ct)
             ?? throw new InvalidOperationException("Report not found");
+        if (!CorruptionStatusTransitionPolicy.CanTransition(report.Status, newStatus))
+            throw new InvalidOperationException($"Cannot transition corruption report from {report.Status} to {newStatus}");
+
+        var oldStatus = report.Status;
         report.Status = newStatus;
         report.UpdatedAt = DateTime.UtcNow;
         if (newStatus is "Closed") report.ClosedAt = DateTime.UtcNow;
+        if (newStatus is not "Closed") report.ClosedAt = null;
+        if (!string.IsNullOrWhiteSpace(note))
+        {
+            db.InvestigationLogs.Add(new InvestigationLog
+            {
+                ReportId = id,
+                AuthorId = actorId,
+                Content = note.Trim(),
+                IsConfidential = true,
+                CreatedAt = DateTime.UtcNow
+            });
+        }
         await db.SaveChangesAsync(ct);
-        await auditService.LogAsync("UpdateCorruptionStatus", actorId, null, "CorruptionReport", id.ToString(), new { newStatus }, null, ct);
+        await auditService.LogAsync("UpdateCorruptionStatus", actorId, null, "CorruptionReport", id.ToString(), new { oldStatus, newStatus, hasNote = !string.IsNullOrWhiteSpace(note) }, null, ct);
     }
 
     public async Task ClaimAsync(int id, int staffId, CancellationToken ct = default)
     {
         var report = await db.Reports.FindAsync([id], ct)
             ?? throw new InvalidOperationException("Report not found");
+        if (report.Status != "Pending") throw new InvalidOperationException("Only pending reports can be claimed");
         if (report.AssignedToId.HasValue) throw new InvalidOperationException("Already claimed");
         report.AssignedToId = staffId;
         report.AssignedAt = DateTime.UtcNow;
@@ -95,10 +117,7 @@ public class CorruptionService(
             ?? throw new InvalidOperationException("Report not found");
         if (report.Status != "Closed") throw new InvalidOperationException("Only closed reports can be reopened");
 
-        report.Status = "InProgress";
-        report.ClosedAt = null;
-        report.UpdatedAt = DateTime.UtcNow;
-        await db.SaveChangesAsync(ct);
+        await UpdateStatusAsync(id, "InProgress", actorId, "เปิดเรื่องใหม่เพื่อสืบสวนเพิ่มเติม", ct);
         await auditService.LogAsync("ReopenCorruptionCase", actorId, null, "CorruptionReport", id.ToString(), null, null, ct);
     }
 
@@ -168,20 +187,24 @@ public class CorruptionService(
         var todayStart = now.Date;
         var yesterdayStart = todayStart.AddDays(-1);
         var sevenDaysAgo = todayStart.AddDays(-6);
-        var slaWarnBefore = now.AddHours(24);
+        var normalSla = await appDb.SlaConfigs.AsNoTracking().FirstOrDefaultAsync(x => x.Priority == "Normal", ct);
+        var warningWindowHours = normalSla is null
+            ? 24
+            : Math.Max(1, normalSla.ResolutionHours * (100 - normalSla.WarningThresholdPercent) / 100d);
+        var slaWarnBefore = now.AddHours(warningWindowHours);
         var thaiCulture = new System.Globalization.CultureInfo("th-TH");
 
         var todayCount = await db.Reports.CountAsync(r => r.CreatedAt >= todayStart, ct);
         var yesterdayCount = await db.Reports.CountAsync(r => r.CreatedAt >= yesterdayStart && r.CreatedAt < todayStart, ct);
 
-        var activeStatuses = new[] { "Pending", "InProgress" };
+        var activeStatuses = new[] { "Pending", "InProgress", "UnderReview" };
         var activeReports = await db.Reports
             .Where(r => activeStatuses.Contains(r.Status))
             .Select(r => new { r.Status, r.SlaDeadline, r.SlaBreached })
             .ToListAsync(ct);
 
         var pendingCount    = activeReports.Count(r => r.Status == "Pending");
-        var inProgressCount = activeReports.Count(r => r.Status == "InProgress");
+        var inProgressCount = activeReports.Count(r => r.Status is "InProgress" or "UnderReview");
         var slaBreachedCount = activeReports.Count(r => r.SlaBreached);
         var slaWarningCount = activeReports.Count(r =>
             !r.SlaBreached && r.SlaDeadline.HasValue && r.SlaDeadline <= slaWarnBefore);
@@ -234,6 +257,22 @@ public class CorruptionService(
     private static IQueryable<CorruptionReport> ApplyFilter(IQueryable<CorruptionReport> q, CorruptionQueueFilter filter)
     {
         if (!string.IsNullOrEmpty(filter.Status)) q = q.Where(r => r.Status == filter.Status);
+        if (!string.IsNullOrWhiteSpace(filter.Search))
+        {
+            var search = filter.Search.Trim();
+            q = q.Where(r => r.ReferenceNumber.Contains(search) ||
+                             r.SubjectType.Contains(search) ||
+                             (r.SubjectPersonName != null && r.SubjectPersonName.Contains(search)) ||
+                             (r.SubjectDepartment != null && r.SubjectDepartment.Contains(search)));
+        }
+        q = filter.QuickView switch
+        {
+            "mine" when filter.ViewerStaffId.HasValue => q.Where(r => r.AssignedToId == filter.ViewerStaffId),
+            "unassigned" => q.Where(r => r.AssignedToId == null && r.Status == "Pending"),
+            "sla-breached" => q.Where(r => r.SlaBreached || (r.SlaDeadline.HasValue && r.SlaDeadline < DateTime.UtcNow)),
+            "review" => q.Where(r => r.Status == "UnderReview"),
+            _ => q
+        };
         return q;
     }
 
@@ -252,5 +291,32 @@ public class CorruptionService(
         if (conn.State != System.Data.ConnectionState.Open)
             await conn.OpenAsync(ct);
         return Convert.ToInt64(await cmd.ExecuteScalarAsync(ct));
+    }
+
+    private async Task SaveAttachmentsAsync(CorruptionReport report, IReadOnlyList<IFormFile> files, CancellationToken ct)
+    {
+        if (files.Count == 0) return;
+
+        var storageRoot = config["FileUpload:StoragePath"] ?? Path.GetTempPath();
+        var relativeDirectory = Path.Combine("corruption", report.ReferenceNumber);
+        var reportDirectory = Path.Combine(storageRoot, relativeDirectory);
+        Directory.CreateDirectory(reportDirectory);
+
+        foreach (var file in files.Where(x => x.Length > 0))
+        {
+            var storedName = $"{Guid.NewGuid():N}{Path.GetExtension(file.FileName).ToLowerInvariant()}";
+            await using var stream = File.Create(Path.Combine(reportDirectory, storedName));
+            await file.CopyToAsync(stream, ct);
+            report.Attachments.Add(new CorruptionAttachment
+            {
+                FileName = Path.GetFileName(file.FileName),
+                StoredPath = Path.Combine(relativeDirectory, storedName),
+                FileSize = file.Length,
+                MimeType = file.ContentType,
+                UploadedAt = DateTime.UtcNow
+            });
+        }
+
+        await db.SaveChangesAsync(ct);
     }
 }

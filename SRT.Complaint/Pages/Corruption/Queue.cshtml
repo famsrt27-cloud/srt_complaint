@@ -17,6 +17,13 @@
 <form method="get" class="bg-white rounded-xl border border-gray-200 shadow-sm p-4 mb-5">
     <div class="flex flex-wrap items-end gap-3">
 
+        <div class="min-w-[240px] flex-1">
+            <label for="corruption-search" class="block text-xs font-medium text-gray-600 mb-1">ค้นหาเรื่อง</label>
+            <input id="corruption-search" name="Search" value="@Model.Search" type="search"
+                   placeholder="เลขที่อ้างอิง ประเภท ผู้ถูกกล่าวหา หรือหน่วยงาน"
+                   class="min-h-11 w-full rounded-lg border border-gray-300 px-3 text-sm focus:border-srt-navy focus:outline-none focus:ring-2 focus:ring-srt-navy/20" />
+        </div>
+
         <div>
             <label class="block text-xs font-medium text-gray-600 mb-1">สถานะ</label>
             <select name="Status"
@@ -36,7 +43,7 @@
             กรอง
         </button>
 
-        @if (!string.IsNullOrEmpty(Model.Status))
+        @if (!string.IsNullOrEmpty(Model.Status) || !string.IsNullOrWhiteSpace(Model.Search) || !string.IsNullOrWhiteSpace(Model.QuickView))
         {
             <a asp-page="/Corruption/Queue" class="text-sm text-gray-500 hover:text-gray-700 py-2">ล้าง</a>
         }
@@ -46,6 +53,19 @@
         </span>
     </div>
 </form>
+
+<nav class="mb-4 flex gap-2 overflow-x-auto pb-1" aria-label="ตัวกรองด่วน">
+    <a asp-page="/Corruption/Queue" asp-route-search="@Model.Search" asp-route-status="@Model.Status"
+       class="whitespace-nowrap rounded-full border px-3 py-2 text-xs font-semibold @(string.IsNullOrEmpty(Model.QuickView) ? "border-srt-navy bg-srt-navy text-white" : "border-slate-300 bg-white text-slate-600")">ทั้งหมด</a>
+    <a asp-page="/Corruption/Queue" asp-route-search="@Model.Search" asp-route-status="@Model.Status" asp-route-quickView="mine"
+       class="whitespace-nowrap rounded-full border px-3 py-2 text-xs font-semibold @(Model.QuickView == "mine" ? "border-srt-navy bg-srt-navy text-white" : "border-slate-300 bg-white text-slate-600")">งานของฉัน</a>
+    <a asp-page="/Corruption/Queue" asp-route-search="@Model.Search" asp-route-status="@Model.Status" asp-route-quickView="unassigned"
+       class="whitespace-nowrap rounded-full border px-3 py-2 text-xs font-semibold @(Model.QuickView == "unassigned" ? "border-amber-600 bg-amber-600 text-white" : "border-slate-300 bg-white text-slate-600")">ยังไม่รับเรื่อง</a>
+    <a asp-page="/Corruption/Queue" asp-route-search="@Model.Search" asp-route-status="@Model.Status" asp-route-quickView="review"
+       class="whitespace-nowrap rounded-full border px-3 py-2 text-xs font-semibold @(Model.QuickView == "review" ? "border-purple-600 bg-purple-600 text-white" : "border-slate-300 bg-white text-slate-600")">รอพิจารณา</a>
+    <a asp-page="/Corruption/Queue" asp-route-search="@Model.Search" asp-route-status="@Model.Status" asp-route-quickView="sla-breached"
+       class="whitespace-nowrap rounded-full border px-3 py-2 text-xs font-semibold @(Model.QuickView == "sla-breached" ? "border-red-700 bg-red-700 text-white" : "border-slate-300 bg-white text-slate-600")">เกิน SLA</a>
+</nav>
 
 <!-- ══ Table ══ -->
 <div class="overflow-x-auto rounded-xl border border-gray-200 shadow-sm bg-white">
@@ -177,6 +197,8 @@
                 <a asp-page="/Corruption/Queue"
                    asp-route-currentPage="@(Model.CurrentPage - 1)"
                    asp-route-status="@Model.Status"
+                   asp-route-search="@Model.Search"
+                   asp-route-quickView="@Model.QuickView"
                    class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">← ก่อนหน้า</a>
             }
             @{
@@ -188,6 +210,8 @@
                 <a asp-page="/Corruption/Queue"
                    asp-route-currentPage="@p"
                    asp-route-status="@Model.Status"
+                   asp-route-search="@Model.Search"
+                   asp-route-quickView="@Model.QuickView"
                    class="px-3 py-1.5 text-sm rounded-lg
                           @(p == Model.CurrentPage ? "bg-amber-600 text-white" : "border border-gray-300 hover:bg-gray-50")">
                     @p
@@ -198,6 +222,8 @@
                 <a asp-page="/Corruption/Queue"
                    asp-route-currentPage="@(Model.CurrentPage + 1)"
                    asp-route-status="@Model.Status"
+                   asp-route-search="@Model.Search"
+                   asp-route-quickView="@Model.QuickView"
                    class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">ถัดไป →</a>
             }
         </div>

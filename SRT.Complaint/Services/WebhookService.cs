@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -16,6 +17,8 @@ public class WebhookService(
     IWebhookUrlValidator urlValidator,
     ILogger<WebhookService> logger) : IWebhookService
 {
+    public const int MaxActiveWebhooksPerApiKey = 10;
+    private static readonly ConcurrentDictionary<int, SemaphoreSlim> RegistrationGates = new();
     private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     private readonly IDataProtector _secretProtector = dataProtectionProvider.CreateProtector("SRT.Complaint.WebhookSecret.v1");
 
@@ -124,28 +127,51 @@ public class WebhookService(
         var (isValid, error) = await urlValidator.ValidateAsync(targetUrl, ct);
         if (!isValid) throw new InvalidOperationException(error);
 
-        var apiKeyExists = await db.ApiKeys.AnyAsync(x => x.Id == apiKeyId && x.IsActive, ct);
-        if (!apiKeyExists) throw new InvalidOperationException("API key not found or inactive");
-
-        var rawSecret = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
-        var webhook = new Webhook
+        var registrationGate = RegistrationGates.GetOrAdd(apiKeyId, _ => new SemaphoreSlim(1, 1));
+        await registrationGate.WaitAsync(ct);
+        try
         {
-            ApiKeyId = apiKeyId,
-            Name = name.Trim(),
-            TargetUrl = targetUrl.Trim(),
-            SecretHash = $"dp:v1:{_secretProtector.Protect(rawSecret)}",
-            Events = JsonSerializer.Serialize(events.Distinct(StringComparer.OrdinalIgnoreCase)),
-            IsActive = true,
-            CreatedAt = DateTime.UtcNow
-        };
-        db.Webhooks.Add(webhook);
-        await db.SaveChangesAsync(ct);
-        return (webhook, rawSecret);
+            var apiKeyExists = await db.ApiKeys.AnyAsync(x => x.Id == apiKeyId && x.IsActive, ct);
+            if (!apiKeyExists) throw new InvalidOperationException("API key not found or inactive");
+            var activeWebhookCount = await db.Webhooks.CountAsync(
+                x => x.ApiKeyId == apiKeyId && x.IsActive, ct);
+            if (activeWebhookCount >= MaxActiveWebhooksPerApiKey)
+                throw new InvalidOperationException($"An API key can have at most {MaxActiveWebhooksPerApiKey} active webhooks");
+
+            var rawSecret = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
+            var webhook = new Webhook
+            {
+                ApiKeyId = apiKeyId,
+                Name = name.Trim(),
+                TargetUrl = targetUrl.Trim(),
+                SecretHash = $"dp:v1:{_secretProtector.Protect(rawSecret)}",
+                Events = JsonSerializer.Serialize(events.Distinct(StringComparer.OrdinalIgnoreCase)),
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow
+            };
+            db.Webhooks.Add(webhook);
+            await db.SaveChangesAsync(ct);
+            return (webhook, rawSecret);
+        }
+        finally
+        {
+            registrationGate.Release();
+        }
     }
 
     public async Task<bool> DeleteAsync(int id, CancellationToken ct = default)
     {
         var webhook = await db.Webhooks.FindAsync([id], ct);
+        if (webhook == null) return false;
+        webhook.IsActive = false;
+        await db.SaveChangesAsync(ct);
+        return true;
+    }
+
+    public async Task<bool> DeleteForApiKeyAsync(int id, int apiKeyId, CancellationToken ct = default)
+    {
+        var webhook = await db.Webhooks.FirstOrDefaultAsync(
+            x => x.Id == id && x.ApiKeyId == apiKeyId, ct);
         if (webhook == null) return false;
         webhook.IsActive = false;
         await db.SaveChangesAsync(ct);

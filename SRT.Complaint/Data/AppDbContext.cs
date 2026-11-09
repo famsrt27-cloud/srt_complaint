@@ -1,20 +1,25 @@
+using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using SRT.Complaint.Models;
 
 namespace SRT.Complaint.Data;
 
-public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
+public class AppDbContext(DbContextOptions<AppDbContext> options)
+    : DbContext(options), IDataProtectionKeyContext
 {
     public DbSet<StaffUser> StaffUsers => Set<StaffUser>();
     public DbSet<ComplaintCategory> ComplaintCategories => Set<ComplaintCategory>();
     public DbSet<ComplaintSubCategory> ComplaintSubCategories => Set<ComplaintSubCategory>();
+    public DbSet<ComplaintDepartment> ComplaintDepartments => Set<ComplaintDepartment>();
     public DbSet<SlaConfig> SlaConfigs => Set<SlaConfig>();
     public DbSet<Models.Complaint> Complaints => Set<Models.Complaint>();
     public DbSet<ComplaintAttachment> ComplaintAttachments => Set<ComplaintAttachment>();
     public DbSet<ComplaintNote> ComplaintNotes => Set<ComplaintNote>();
+    public DbSet<ComplaintAcceptanceEvidence> ComplaintAcceptanceEvidence => Set<ComplaintAcceptanceEvidence>();
     public DbSet<ComplaintTransferLog> ComplaintTransferLogs => Set<ComplaintTransferLog>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<NotificationTemplate> NotificationTemplates => Set<NotificationTemplate>();
+    public DbSet<NotificationDeliveryLog> NotificationDeliveryLogs => Set<NotificationDeliveryLog>();
     public DbSet<Partner> Partners => Set<Partner>();
     public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
     public DbSet<ApiKeyScope> ApiKeyScopes => Set<ApiKeyScope>();
@@ -30,6 +35,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<ContentBlock> ContentBlocks => Set<ContentBlock>();
     public DbSet<ExternalSyncLog> ExternalSyncLogs => Set<ExternalSyncLog>();
     public DbSet<TraffySettings> TraffySettings => Set<TraffySettings>();
+    public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -64,6 +70,16 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
              .OnDelete(DeleteBehavior.Cascade);
         });
 
+        modelBuilder.Entity<ComplaintDepartment>(e =>
+        {
+            e.ToTable("ComplaintDepartments", "dbo");
+            e.HasIndex(x => x.Name).IsUnique();
+            e.Property(x => x.Name).HasMaxLength(200);
+            e.Property(x => x.Description).HasMaxLength(500);
+            e.Property(x => x.CreatedAt).HasDefaultValueSql("GETUTCDATE()");
+            e.Property(x => x.UpdatedAt).HasDefaultValueSql("GETUTCDATE()");
+        });
+
         modelBuilder.Entity<SlaConfig>(e =>
         {
             e.ToTable("SlaConfigs", "dbo");
@@ -89,9 +105,29 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.Channel).HasMaxLength(20).HasDefaultValue("Web");
             e.Property(x => x.Priority).HasMaxLength(20);
             e.Property(x => x.Status).HasMaxLength(50);
+            e.Property(x => x.WorkflowStep).HasMaxLength(30).HasDefaultValue(ComplaintWorkflowSteps.Received);
+            e.Property(x => x.WorkflowUpdatedAt).HasDefaultValueSql("GETUTCDATE()");
+            e.Property(x => x.ResolutionSummary).HasMaxLength(4000);
+            e.Property(x => x.RowVersion).IsRowVersion();
             e.Property(x => x.SatisfactionNote).HasMaxLength(500);
             e.HasOne(x => x.AssignedTo).WithMany(u => u.AssignedComplaints).HasForeignKey(x => x.AssignedToId).OnDelete(DeleteBehavior.SetNull);
             e.HasOne(x => x.SubCategory).WithMany(s => s.Complaints).HasForeignKey(x => x.SubCategoryId).OnDelete(DeleteBehavior.ClientSetNull);
+        });
+
+        modelBuilder.Entity<ComplaintAcceptanceEvidence>(e =>
+        {
+            e.ToTable("ComplaintAcceptanceEvidence", "dbo");
+            e.HasIndex(x => x.EvidenceId).IsUnique();
+            e.HasIndex(x => new { x.ComplaintId, x.AcceptanceType }).IsUnique();
+            e.Property(x => x.AcceptanceType).HasMaxLength(50);
+            e.Property(x => x.TermsTitle).HasMaxLength(300);
+            e.Property(x => x.TermsVersion).HasMaxLength(80);
+            e.Property(x => x.TermsContentHash).HasMaxLength(64);
+            e.Property(x => x.Source).HasMaxLength(100);
+            e.HasOne(x => x.Complaint)
+                .WithMany(x => x.AcceptanceEvidence)
+                .HasForeignKey(x => x.ComplaintId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<ComplaintAttachment>(e =>
@@ -142,6 +178,17 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.EventKey).HasMaxLength(100);
             e.Property(x => x.LabelTh).HasMaxLength(200);
             e.Property(x => x.EmailSubject).HasMaxLength(300);
+        });
+
+        modelBuilder.Entity<NotificationDeliveryLog>(e =>
+        {
+            e.ToTable("NotificationDeliveryLogs", "dbo");
+            e.HasIndex(x => x.AttemptedAt);
+            e.Property(x => x.EventKey).HasMaxLength(100);
+            e.Property(x => x.Channel).HasMaxLength(20);
+            e.Property(x => x.RecipientMasked).HasMaxLength(200);
+            e.Property(x => x.Status).HasMaxLength(20);
+            e.Property(x => x.ErrorMessage).HasMaxLength(1000);
         });
 
         modelBuilder.Entity<Partner>(e =>

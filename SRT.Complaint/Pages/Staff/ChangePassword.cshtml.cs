@@ -70,6 +70,7 @@ public class ChangePasswordModel(AppDbContext db) : PageModel
         staff.MustChangePassword = false;
         staff.TempPasswordExpiresAt = null;
         staff.TempPasswordEncrypted = null;
+        staff.AuthVersion++;
         await db.SaveChangesAsync();
 
         // Re-issue cookie without MustChangePassword claim
@@ -78,6 +79,7 @@ public class ChangePasswordModel(AppDbContext db) : PageModel
             new(ClaimTypes.NameIdentifier, staff.Id.ToString()),
             new(ClaimTypes.Name, staff.EmployeeCode),
             new(ClaimTypes.Role, staff.Role),
+            new("AuthVersion", staff.AuthVersion.ToString()),
             new("FullName", staff.FullName),
             new("EmployeeCode", staff.EmployeeCode)
         };
@@ -91,6 +93,11 @@ public class ChangePasswordModel(AppDbContext db) : PageModel
         });
 
         TempData["Success"] = "เปลี่ยนรหัสผ่านเรียบร้อยแล้ว";
-        return RedirectToPage("/Staff/Dashboard");
+        return staff.Role switch
+        {
+            "CorruptionOfficer" => RedirectToPage("/Corruption/Dashboard"),
+            "SuperAdmin" => RedirectToPage("/Admin/Dashboard"),
+            _ => RedirectToPage("/Staff/Dashboard")
+        };
     }
 }

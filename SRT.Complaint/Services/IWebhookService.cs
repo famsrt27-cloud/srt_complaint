@@ -10,5 +10,6 @@ public interface IWebhookService
     Task<IReadOnlyList<Webhook>> ListAllAsync(CancellationToken ct = default);
     Task<(Webhook webhook, string rawSecret)> CreateAsync(int apiKeyId, string name, string targetUrl, IList<string> events, CancellationToken ct = default);
     Task<bool> DeleteAsync(int id, CancellationToken ct = default);
+    Task<bool> DeleteForApiKeyAsync(int id, int apiKeyId, CancellationToken ct = default);
     Task RetryPendingAsync(CancellationToken ct = default);
 }

@@ -8,13 +8,14 @@
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
-    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/lib/sweetalert2/sweetalert2.min.css" asp-append-version="true" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css" />
 
     @await RenderSectionAsync("Head", required: false)
 </head>
-<body class="min-h-screen flex flex-col bg-gray-50 font-thai antialiased">
+<body class="flowbite-public min-h-screen flex flex-col bg-slate-50 font-thai antialiased">
 
     <!-- Skip navigation — WCAG 2.4.1 -->
     <a href="#main-content"
@@ -93,36 +94,15 @@
     <!-- FLASH MESSAGES -->
     @if (TempData["Success"] is string successMsg)
     {
-        <div class="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 pt-4 animate-fade-in" role="alert">
-            <div class="alert-success">
-                <svg class="w-4 h-4 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
-                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
-                </svg>
-                <span>@successMsg</span>
-            </div>
-        </div>
+        <div hidden data-swal-toast="success">@successMsg</div>
     }
     @if (TempData["Error"] is string errorMsg)
     {
-        <div class="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 pt-4 animate-fade-in" role="alert">
-            <div class="alert-error">
-                <svg class="w-4 h-4 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
-                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm-1-9a1 1 0 012 0v4a1 1 0 01-2 0V9zm0 6a1 1 0 112 0 1 1 0 01-2 0z" clip-rule="evenodd" />
-                </svg>
-                <span>@errorMsg</span>
-            </div>
-        </div>
+        <div hidden data-swal-toast="error">@errorMsg</div>
     }
     @if (TempData["Warning"] is string warnMsg)
     {
-        <div class="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 pt-4 animate-fade-in" role="alert">
-            <div class="alert-warning">
-                <svg class="w-4 h-4 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
-                    <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
-                </svg>
-                <span>@warnMsg</span>
-            </div>
-        </div>
+        <div hidden data-swal-toast="warning">@warnMsg</div>
     }
 
     <!-- MAIN CONTENT -->
@@ -197,6 +177,7 @@
 
     <!-- SCRIPTS -->
     <script src="~/lib/htmx.min.js" defer></script>
+    <script src="~/lib/sweetalert2/sweetalert2.all.min.js" asp-append-version="true" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/flatpickr" defer></script>
     <script src="~/js/site.js" asp-append-version="true" defer></script>
     <script>
