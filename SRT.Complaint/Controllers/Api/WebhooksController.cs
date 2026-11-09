@@ -114,6 +114,6 @@ public class WebhooksController(
 }
 
 public record CreateWebhookDto(
-    [property: Required, MaxLength(200)] string Name,
-    [property: Required, Url, MaxLength(1000)] string TargetUrl,
-    [property: Required, MinLength(1)] List<string> Events);
+    [param: Required, MaxLength(200)] string Name,
+    [param: Required, Url, MaxLength(1000)] string TargetUrl,
+    [param: Required, MinLength(1)] List<string> Events);

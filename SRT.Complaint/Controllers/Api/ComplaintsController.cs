@@ -431,17 +431,17 @@ public record ComplaintReadDto(
     string Version);
 
 public record ComplaintCreateDto(
-    [property: Required, MaxLength(100)] string? ExternalReference,
-    [property: Required, MaxLength(200)] string ReporterName,
-    [property: Required, MaxLength(20)] string ReporterPhone,
-    [property: EmailAddress, MaxLength(200)] string? ReporterEmail,
-    [property: Range(1, int.MaxValue)] int CategoryId,
+    [param: Required, MaxLength(100)] string? ExternalReference,
+    [param: Required, MaxLength(200)] string ReporterName,
+    [param: Required, MaxLength(20)] string ReporterPhone,
+    [param: EmailAddress, MaxLength(200)] string? ReporterEmail,
+    [param: Range(1, int.MaxValue)] int CategoryId,
     int? SubCategoryId,
-    [property: MaxLength(200)] string? SubjectStation,
+    [param: MaxLength(200)] string? SubjectStation,
     DateTime? IncidentDate,
-    [property: Required, MinLength(10), MaxLength(5000)] string Description,
-    [property: Range(-90, 90)] double? Latitude,
-    [property: Range(-180, 180)] double? Longitude);
+    [param: Required, MinLength(10), MaxLength(5000)] string Description,
+    [param: Range(-90, 90)] double? Latitude,
+    [param: Range(-180, 180)] double? Longitude);
 
 public record ComplaintCreatedDto(
     string ReferenceNumber,
@@ -452,8 +452,8 @@ public record ComplaintCreatedDto(
     string Message);
 
 public record UpdateStatusDto(
-    [property: Required] string NewStatus,
-    [property: MaxLength(2000)] string? Note);
+    [param: Required] string NewStatus,
+    [param: MaxLength(2000)] string? Note);
 
 public record EdocPayloadDto(
     string SchemaVersion,
